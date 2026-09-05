@@ -10,6 +10,7 @@ from trading_system.config import Settings, get_settings
 from trading_system.data import build_market_data_provider
 from trading_system.data.base import MarketDataProvider
 from trading_system.modes import PHASE, LIVE_EXECUTION_UNLOCKED, assert_mode_allowed
+from trading_system.options import OptionsAnalysisEngine
 from trading_system.regime import MarketRegimeEngine
 from trading_system.risk import RiskLimits, load_risk_limits
 from trading_system.scanner import OpportunityScanner
@@ -24,6 +25,7 @@ class ResearchRuntime:
         risk: RiskLimits | None = None,
         regime_engine: MarketRegimeEngine | None = None,
         scanner: OpportunityScanner | None = None,
+        options_engine: OptionsAnalysisEngine | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         assert_mode_allowed(self.settings.mode)
@@ -32,6 +34,9 @@ class ResearchRuntime:
         self.risk = risk or load_risk_limits(self.settings)
         self.regime_engine = regime_engine or MarketRegimeEngine(self.market_data)
         self.scanner = scanner or OpportunityScanner(self.market_data)
+        self.options_engine = options_engine or OptionsAnalysisEngine(
+            self.market_data, risk=self.risk
+        )
 
     def status(self) -> dict:
         return {
@@ -102,3 +107,25 @@ class ResearchRuntime:
             benchmark=benchmark,
         )
         return scanner.scan().to_dict()
+
+    def analyze_options(
+        self,
+        *,
+        benchmark: str = "SPY",
+        lookback: int = 90,
+        min_equity_score: float = 55.0,
+        min_option_score: float = 55.0,
+        max_results: int = 10,
+        symbols: list[str] | None = None,
+    ) -> dict:
+        engine = OptionsAnalysisEngine(
+            self.market_data,
+            risk=self.risk,
+            lookback=lookback,
+            min_equity_score=min_equity_score,
+            min_option_score=min_option_score,
+            max_results=max_results,
+            benchmark=benchmark,
+            universe=symbols,
+        )
+        return engine.analyze().to_dict()
