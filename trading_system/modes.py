@@ -1,4 +1,4 @@
-"""System operating modes. Live execution remains locked through Phase 3."""
+"""System operating modes. Live execution remains locked through Phase 4."""
 
 from __future__ import annotations
 
@@ -11,13 +11,11 @@ class TradingMode(str, Enum):
     LIVE_APPROVAL = "LIVE_APPROVAL"
 
 
-# Phase gate: raise this when bumping phases that unlock paper/live paths.
-PHASE = 3
+PHASE = 4
 LIVE_EXECUTION_UNLOCKED = False
 
 
 def assert_mode_allowed(mode: TradingMode) -> None:
-    """Hard gate — LIVE_APPROVAL may be configured but must not execute yet."""
     if mode is TradingMode.LIVE_APPROVAL and not LIVE_EXECUTION_UNLOCKED:
         raise RuntimeError(
             "LIVE_APPROVAL is configured but live execution is locked until a later "

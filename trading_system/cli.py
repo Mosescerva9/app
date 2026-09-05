@@ -23,7 +23,7 @@ def _print(data: object) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="trading-system",
-        description="AI trading research system — Phase 3 (regime + read-only data)",
+        description="AI trading research system — Phase 4 (scanner + regime + read-only data)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -43,6 +43,18 @@ def build_parser() -> argparse.ArgumentParser:
     regime = sub.add_parser("regime", help="Classify current market regime")
     regime.add_argument("--benchmark", default="SPY")
     regime.add_argument("--lookback", type=int, default=90)
+
+    scan = sub.add_parser("scan", help="Scan universe for ranked opportunities")
+    scan.add_argument("--benchmark", default="SPY")
+    scan.add_argument("--lookback", type=int, default=90)
+    scan.add_argument("--min-score", type=float, default=55.0)
+    scan.add_argument("--max-results", type=int, default=10)
+    scan.add_argument(
+        "--symbols",
+        nargs="+",
+        default=None,
+        help="Optional custom universe (default: liquid large-caps/ETFs)",
+    )
 
     return parser
 
@@ -68,6 +80,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "regime":
         _print(runtime.market_regime(benchmark=args.benchmark, lookback=args.lookback))
+        return 0
+    if args.command == "scan":
+        _print(
+            runtime.scan_opportunities(
+                benchmark=args.benchmark,
+                lookback=args.lookback,
+                min_score=args.min_score,
+                max_results=args.max_results,
+                symbols=args.symbols,
+            )
+        )
         return 0
 
     parser.error(f"Unknown command {args.command}")

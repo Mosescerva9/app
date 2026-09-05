@@ -12,11 +12,10 @@ from trading_system.data.base import MarketDataProvider
 from trading_system.modes import PHASE, LIVE_EXECUTION_UNLOCKED, assert_mode_allowed
 from trading_system.regime import MarketRegimeEngine
 from trading_system.risk import RiskLimits, load_risk_limits
+from trading_system.scanner import OpportunityScanner
 
 
 class ResearchRuntime:
-    """Composable runtime used by CLI and future agent/orchestrator layers."""
-
     def __init__(
         self,
         settings: Settings | None = None,
@@ -24,6 +23,7 @@ class ResearchRuntime:
         broker: BrokerReadClient | None = None,
         risk: RiskLimits | None = None,
         regime_engine: MarketRegimeEngine | None = None,
+        scanner: OpportunityScanner | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         assert_mode_allowed(self.settings.mode)
@@ -31,6 +31,7 @@ class ResearchRuntime:
         self.broker = broker or build_broker_client(self.settings)
         self.risk = risk or load_risk_limits(self.settings)
         self.regime_engine = regime_engine or MarketRegimeEngine(self.market_data)
+        self.scanner = scanner or OpportunityScanner(self.market_data)
 
     def status(self) -> dict:
         return {
@@ -82,3 +83,22 @@ class ResearchRuntime:
             lookback=lookback,
         )
         return engine.analyze().to_dict()
+
+    def scan_opportunities(
+        self,
+        *,
+        benchmark: str = "SPY",
+        lookback: int = 90,
+        min_score: float = 55.0,
+        max_results: int = 10,
+        symbols: list[str] | None = None,
+    ) -> dict:
+        scanner = OpportunityScanner(
+            self.market_data,
+            universe=symbols,
+            lookback=lookback,
+            min_score=min_score,
+            max_results=max_results,
+            benchmark=benchmark,
+        )
+        return scanner.scan().to_dict()

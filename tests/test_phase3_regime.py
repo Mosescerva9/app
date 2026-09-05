@@ -39,7 +39,7 @@ def _bars_from_closes(closes: list[float], symbol: str = "SPY") -> list[Bar]:
 
 
 def test_phase_is_three():
-    assert PHASE == 3
+    assert PHASE == 4
 
 
 def test_strong_bull_classification():
