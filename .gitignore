@@ -6,7 +6,7 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
-data/
+/data/
 *.db
 *.log
 webull_*.log
@@ -15,3 +15,4 @@ dist/
 build/
 .coverage
 htmlcov/
+trading_system.egg-info/
