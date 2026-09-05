@@ -1,6 +1,6 @@
 # Architecture Audit — AI Trading Research & Execution System
 
-**Status:** Phase 1 complete — research only. No live trading code in this phase.  
+**Status:** Phase 1 audit complete; Phase 2 scaffold implemented (read-only). No live order placement.  
 **Date:** 2026-09-05  
 **Capital assumption:** ~$1,000  
 **Default mode:** `RESEARCH` → then `PAPER` → only later `LIVE_APPROVAL`
