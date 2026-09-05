@@ -1,4 +1,4 @@
-"""Application service wiring for Phase 2 research operations."""
+"""Application service wiring for research operations."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from trading_system.config import Settings, get_settings
 from trading_system.data import build_market_data_provider
 from trading_system.data.base import MarketDataProvider
 from trading_system.modes import PHASE, LIVE_EXECUTION_UNLOCKED, assert_mode_allowed
+from trading_system.regime import MarketRegimeEngine
 from trading_system.risk import RiskLimits, load_risk_limits
 
 
@@ -22,12 +23,14 @@ class ResearchRuntime:
         market_data: MarketDataProvider | None = None,
         broker: BrokerReadClient | None = None,
         risk: RiskLimits | None = None,
+        regime_engine: MarketRegimeEngine | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         assert_mode_allowed(self.settings.mode)
         self.market_data = market_data or build_market_data_provider(self.settings)
         self.broker = broker or build_broker_client(self.settings)
         self.risk = risk or load_risk_limits(self.settings)
+        self.regime_engine = regime_engine or MarketRegimeEngine(self.market_data)
 
     def status(self) -> dict:
         return {
@@ -71,3 +74,11 @@ class ResearchRuntime:
             "positions": [asdict(p) for p in positions],
             "open_orders": [asdict(o) for o in orders],
         }
+
+    def market_regime(self, benchmark: str = "SPY", lookback: int = 90) -> dict:
+        engine = MarketRegimeEngine(
+            self.market_data,
+            benchmark=benchmark,
+            lookback=lookback,
+        )
+        return engine.analyze().to_dict()

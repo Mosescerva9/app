@@ -1,11 +1,10 @@
-"""CLI for Phase 2 research operations (no order placement)."""
+"""CLI for research operations (no order placement)."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import logging
-import sys
 from datetime import datetime
 
 from trading_system.services.runtime import ResearchRuntime
@@ -24,7 +23,7 @@ def _print(data: object) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="trading-system",
-        description="AI trading research system — Phase 2 (read-only / research)",
+        description="AI trading research system — Phase 3 (regime + read-only data)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -40,6 +39,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     acct = sub.add_parser("account", help="Show account balance/positions/open orders")
     acct.add_argument("--account-id", default=None)
+
+    regime = sub.add_parser("regime", help="Classify current market regime")
+    regime.add_argument("--benchmark", default="SPY")
+    regime.add_argument("--lookback", type=int, default=90)
 
     return parser
 
@@ -62,6 +65,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "account":
         _print(runtime.account_overview(args.account_id))
+        return 0
+    if args.command == "regime":
+        _print(runtime.market_regime(benchmark=args.benchmark, lookback=args.lookback))
         return 0
 
     parser.error(f"Unknown command {args.command}")
