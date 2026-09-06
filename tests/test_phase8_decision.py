@@ -239,8 +239,8 @@ def test_unavailable_catalyst_does_not_crash_and_lowers_confidence():
     assert pkg.scores.confidence < pkg.scores.overall
     assert pkg.adversarial.confidence_penalty >= 15.0
     assert not pkg.catalyst.earnings_events
-    # No fabricated headline fields.
-    assert all("headline" not in n.lower() for n in pkg.catalyst.notes)
+    assert not hasattr(pkg.catalyst, "headlines")
+    assert "headlines" not in pkg.catalyst.to_dict()
 
 
 def test_unknown_catalyst_and_weak_technicals_stand_aside():
