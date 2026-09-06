@@ -23,6 +23,7 @@ def score_contract(
     *,
     limits: RiskLimits,
     target_abs_delta: float = 0.35,
+    delta_fit_width: float = 0.20,
 ) -> OptionContractScores:
     reasons: list[str] = []
 
@@ -36,12 +37,17 @@ def score_contract(
     elif liquidity < 40:
         reasons.append("thin_liquidity")
 
-    # Delta fit around target
+    # Delta fit around target. Width widens on a small book so |delta|~0.10
+    # can still clear the score floor; target stays ~0.35 so mid-delta wins
+    # when it also fits the premium cap.
     abs_delta = abs(contract.delta)
+    width = max(delta_fit_width, 1e-6)
     delta_err = abs(abs_delta - target_abs_delta)
-    delta_fit = round(_clamp(100.0 * (1.0 - delta_err / 0.20)), 2)
+    delta_fit = round(_clamp(100.0 * (1.0 - delta_err / width)), 2)
     if delta_err <= 0.05:
         reasons.append("delta_near_target")
+    elif abs_delta < 0.25:
+        reasons.append("budget_feasible_otm")
 
     # IV sanity: prefer moderate IV (very high IV = expensive premium)
     iv = contract.implied_volatility
@@ -72,7 +78,7 @@ def score_contract(
     if contract.dte >= 40:
         reasons.append("dte_in_sweet_spot")
 
-    # Risk fit: how well premium sits inside the ~$40 budget (prefer using ~50-90%)
+    # Risk fit: how well premium sits inside the per-trade budget (~$150 on $1,500)
     max_risk = max(limits.max_risk_per_trade_usd, 1.0)
     premium_usd = contract.premium_per_contract_usd
     utilization = premium_usd / max_risk

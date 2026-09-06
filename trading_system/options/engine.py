@@ -8,7 +8,12 @@ from datetime import datetime, timezone
 
 from trading_system.data.base import MarketDataProvider
 from trading_system.options.chain import MockOptionChainProvider, OptionChainProvider
-from trading_system.options.filters import OptionFilterConfig, filter_contract
+from trading_system.options.factory import build_option_chain_provider
+from trading_system.options.filters import (
+    OptionFilterConfig,
+    filter_contract,
+    resolve_filter_config,
+)
 from trading_system.options.scoring import score_contract
 from trading_system.options.types import OptionCandidate, OptionsAnalysisReport
 from trading_system.risk.limits import RiskLimits, load_risk_limits
@@ -25,9 +30,11 @@ class OptionsAnalysisEngine:
 
     Rules (Phase 5):
     - LONG equity bias → long calls; SHORT bias → long puts
-    - Prefer 30–60 DTE, |delta| ~0.25–0.45, liquid OI/spreads
-    - Max loss = premium × 100 must fit risk budget (~$40 on $1k)
-    - Contract must pass its own filters/scores (equity score alone is not enough)
+    - Prefer 30–60 DTE, |delta| ~0.25–0.45 when premium×100 fits the book
+    - On a ≤$150 book (or when that mid-delta band is empty), allow
+      |delta| 0.08–0.35 and DTE ≥14 so liquid OTM longs can surface
+    - Max loss = premium × 100 must still fit the risk budget
+    - No credit / naked short premium. Live execution remains locked.
     """
 
     def __init__(
@@ -46,7 +53,12 @@ class OptionsAnalysisEngine:
         universe: tuple[str, ...] | list[str] | None = None,
     ) -> None:
         self.market_data = market_data
-        self.chain_provider = chain_provider or MockOptionChainProvider()
+        if chain_provider is not None:
+            self.chain_provider = chain_provider
+        elif getattr(market_data, "name", "") == "webull":
+            self.chain_provider = build_option_chain_provider(get_settings(), market_data)
+        else:
+            self.chain_provider = MockOptionChainProvider()
         self.risk = risk or load_risk_limits(get_settings())
         self.filter_config = filter_config or OptionFilterConfig()
         self.lookback = lookback
@@ -71,10 +83,19 @@ class OptionsAnalysisEngine:
         rejected: Counter[str] = Counter()
         candidates: list[OptionCandidate] = []
         contracts_evaluated = 0
+        filter_cfg = resolve_filter_config(self.risk, self.filter_config)
         notes = [
             "Phase 5 options engine: long premium only (calls for LONG, puts for SHORT).",
-            "Prefer 30–60 DTE, mid-delta, liquid contracts within per-trade risk budget.",
-            "Results are RESEARCH candidates — not trade orders. Live execution remains locked.",
+            (
+                "Prefer 30–60 DTE / mid-delta when debit×100 fits the per-trade budget. "
+                f"Active window: DTE {filter_cfg.min_dte}–{filter_cfg.max_dte}, "
+                f"|delta| {filter_cfg.min_abs_delta:.2f}–{filter_cfg.max_abs_delta:.2f} "
+                f"(budget ${self.risk.max_risk_per_trade_usd:.0f})."
+            ),
+            (
+                "Cheap OTM is more lottery-like than mid-delta; max loss is still 1× debit. "
+                "Results are RESEARCH candidates — not trade orders. Live execution remains locked."
+            ),
             f"Chain provider: {type(self.chain_provider).__name__}",
         ]
 
@@ -83,7 +104,7 @@ class OptionsAnalysisEngine:
                 rejected["no_direction"] += 1
                 continue
             symbol_candidates, evaluated = self._analyze_opportunity(
-                opp, as_of=as_of, rejected=rejected
+                opp, as_of=as_of, rejected=rejected, notes=notes
             )
             contracts_evaluated += evaluated
             candidates.extend(symbol_candidates)
@@ -91,6 +112,14 @@ class OptionsAnalysisEngine:
         candidates.sort(key=lambda c: c.scores.overall, reverse=True)
         selected = candidates[: self.max_results]
 
+        if not report.opportunities and getattr(report, "rejects", None):
+            counts: dict[str, int] = {}
+            for row in report.rejects:
+                counts[row.reason] = counts.get(row.reason, 0) + 1
+            notes.append(
+                "Equity scan produced 0 opportunities; option engine has nothing to size. "
+                f"Scan rejects: {counts}"
+            )
         if not selected:
             notes.append("No option contracts passed filters/scores for current equity set.")
 
@@ -109,6 +138,7 @@ class OptionsAnalysisEngine:
         *,
         as_of: datetime,
         rejected: Counter[str],
+        notes: list[str],
     ) -> tuple[list[OptionCandidate], int]:
         spot = self._spot(opp.symbol, fallback=opp.entry)
         try:
@@ -116,12 +146,59 @@ class OptionsAnalysisEngine:
         except Exception as exc:  # noqa: BLE001
             logger.info("Chain failed for %s: %s", opp.symbol, exc)
             rejected["chain_error"] += 1
+            notes.append(f"{opp.symbol} chain_error: {exc}")
             return [], 0
 
         side = opp.direction.value
+        primary_cfg = resolve_filter_config(self.risk, self.filter_config, relax=False)
+        scored, evaluated, reject_reasons = self._score_chain(
+            chain, opp=opp, side=side, cfg=primary_cfg, rejected=rejected, notes=notes
+        )
+
+        if (
+            not scored
+            and self.filter_config.auto_relax_when_budget_binds
+            and reject_reasons.get("premium_exceeds_risk_budget", 0) > 0
+        ):
+            relaxed_cfg = resolve_filter_config(self.risk, self.filter_config, relax=True)
+            if relaxed_cfg != primary_cfg:
+                notes.append(
+                    f"{opp.symbol}: mid-delta empty under "
+                    f"${self.risk.max_risk_per_trade_usd:.0f} premium cap; "
+                    f"retrying |delta| {relaxed_cfg.min_abs_delta:.2f}–"
+                    f"{relaxed_cfg.max_abs_delta:.2f}, "
+                    f"DTE {relaxed_cfg.min_dte}–{relaxed_cfg.max_dte}."
+                )
+                scored, extra, _ = self._score_chain(
+                    chain,
+                    opp=opp,
+                    side=side,
+                    cfg=relaxed_cfg,
+                    rejected=rejected,
+                    notes=notes,
+                )
+                evaluated += extra
+
+        scored.sort(key=lambda c: c.scores.overall, reverse=True)
+        return scored[: self.max_contracts_per_symbol], evaluated
+
+    def _score_chain(
+        self,
+        chain,
+        *,
+        opp: Opportunity,
+        side: str,
+        cfg: OptionFilterConfig,
+        rejected: Counter[str],
+        notes: list[str],
+    ) -> tuple[list[OptionCandidate], int, Counter[str]]:
         strategy = "long_call" if side == "LONG" else "long_put"
         scored: list[OptionCandidate] = []
+        below_floor: list[OptionCandidate] = []
         evaluated = 0
+        local = Counter()
+        relaxed_band = cfg.min_abs_delta < 0.25
+        delta_width = 0.30 if relaxed_band else 0.20
 
         for contract in chain:
             evaluated += 1
@@ -129,36 +206,56 @@ class OptionsAnalysisEngine:
                 contract,
                 side_bias=side,
                 limits=self.risk,
-                config=self.filter_config,
+                config=cfg,
             )
             if not result.ok:
+                local[result.reason] += 1
                 rejected[result.reason] += 1
                 continue
 
-            scores = score_contract(contract, limits=self.risk)
-            if scores.overall < self.min_option_score:
-                rejected["option_score_below_min"] += 1
-                continue
-
-            notes = [
+            scores = score_contract(
+                contract,
+                limits=self.risk,
+                delta_fit_width=delta_width,
+            )
+            cand_notes = [
                 f"equity={opp.symbol} {side} setup={opp.setup.value}",
                 f"equity_score={opp.scores.overall:.1f}",
                 f"option_score={scores.overall:.1f}",
                 *scores.reasons[:4],
             ]
-            scored.append(
-                OptionCandidate(
-                    contract=contract,
-                    scores=scores,
-                    equity_opportunity=opp,
-                    strategy=strategy,
-                    max_loss_usd=contract.premium_per_contract_usd,
-                    notes=tuple(notes),
-                )
+            candidate = OptionCandidate(
+                contract=contract,
+                scores=scores,
+                equity_opportunity=opp,
+                strategy=strategy,
+                max_loss_usd=contract.premium_per_contract_usd,
+                notes=tuple(cand_notes),
             )
+            if scores.overall >= self.min_option_score:
+                scored.append(candidate)
+            else:
+                below_floor.append(candidate)
+                local["option_score_below_min"] += 1
+                rejected["option_score_below_min"] += 1
 
-        scored.sort(key=lambda c: c.scores.overall, reverse=True)
-        return scored[: self.max_contracts_per_symbol], evaluated
+        if (
+            not scored
+            and below_floor
+            and cfg.prefer_feasible_over_empty
+        ):
+            floor = min(self.min_option_score, cfg.budget_feasible_min_score)
+            fallback = [c for c in below_floor if c.scores.overall >= floor]
+            fallback.sort(key=lambda c: c.scores.overall, reverse=True)
+            if fallback:
+                notes.append(
+                    f"{opp.symbol}: kept budget-feasible long-premium contracts "
+                    f"below min_option_score={self.min_option_score:.0f} "
+                    f"(floor {floor:.0f}) rather than returning none."
+                )
+                scored = fallback
+
+        return scored, evaluated, local
 
     def _spot(self, symbol: str, fallback: float | None) -> float:
         try:

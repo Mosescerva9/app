@@ -86,6 +86,11 @@ def test_scanner_returns_ranked_report():
     assert "regime" in payload
     assert "scoring_policy" in payload
     assert payload["scoring_policy"]["method"] == "weighted_renormalized"
+    assert "rejects" in payload
+    assert "reject_counts" in payload
+    if payload["opportunity_count"] == 0:
+        assert payload["reject_count"] >= 1
+        assert "empty_scan_diagnosis" in payload
     # May be empty in awkward mock regimes; ensure structure is valid.
     for opp in payload["opportunities"]:
         assert opp["decision"] in {"WATCH", "CANDIDATE"}

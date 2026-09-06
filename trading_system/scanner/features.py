@@ -6,6 +6,7 @@ import math
 from dataclasses import dataclass
 from statistics import mean, pstdev
 
+from trading_system.data.bars import ensure_chronological_bars
 from trading_system.models import Bar
 
 
@@ -30,6 +31,7 @@ class SymbolFeatures:
 
 
 def extract_symbol_features(bars: list[Bar], *, symbol: str) -> SymbolFeatures:
+    bars = ensure_chronological_bars(bars)
     if len(bars) < 30:
         raise ValueError(f"{symbol}: need >=30 bars, got {len(bars)}")
 

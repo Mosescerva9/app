@@ -22,6 +22,7 @@ from trading_system.scanner.types import (
     Opportunity,
     ScanReport,
     SetupType,
+    SymbolReject,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,18 +61,30 @@ class OpportunityScanner:
             notes.append(f"Regime={regime.value}: prefer caution / fewer setups.")
 
         opportunities: list[Opportunity] = []
+        rejects: list[SymbolReject] = []
         for symbol in self.universe:
             try:
-                opp = self._score_symbol(symbol, regime_report)
+                scored = self._score_symbol(symbol, regime_report)
             except Exception as exc:  # noqa: BLE001
                 logger.info("Skip %s: %s", symbol, exc)
                 notes.append(f"Skipped {symbol}: {exc}")
+                rejects.append(SymbolReject(symbol, "error", str(exc)))
                 continue
-            if opp is not None:
-                opportunities.append(opp)
+            if isinstance(scored, SymbolReject):
+                rejects.append(scored)
+                continue
+            opportunities.append(scored)
 
         opportunities.sort(key=lambda o: o.scores.overall, reverse=True)
         selected = [o for o in opportunities if o.decision != "REJECT"][: self.max_results]
+        if not selected:
+            counts: dict[str, int] = {}
+            for row in rejects:
+                counts[row.reason] = counts.get(row.reason, 0) + 1
+            summary = ", ".join(f"{k}={v}" for k, v in sorted(counts.items())) or "none"
+            notes.append(
+                f"Empty Top {self.max_results}: opportunity_count=0. Rejects: {summary}."
+            )
 
         return ScanReport(
             benchmark=self.benchmark,
@@ -80,9 +93,12 @@ class OpportunityScanner:
             universe_size=len(self.universe),
             opportunities=selected,
             notes=notes,
+            rejects=rejects,
         )
 
-    def _score_symbol(self, symbol: str, regime_report: RegimeReport) -> Opportunity | None:
+    def _score_symbol(
+        self, symbol: str, regime_report: RegimeReport
+    ) -> Opportunity | SymbolReject:
         bars = self.market_data.get_history_bars(symbol, timespan="D", count=self.lookback)
         features = extract_symbol_features(bars, symbol=symbol)
         setup, direction, entry, stop, target = choose_setup_and_levels(
@@ -90,7 +106,11 @@ class OpportunityScanner:
         )
 
         if setup is SetupType.STAND_ASIDE or direction is Direction.NONE:
-            return None
+            return SymbolReject(
+                symbol,
+                "no_setup",
+                f"stand_aside under {regime_report.regime.value}",
+            )
 
         liquidity = score_liquidity(features)
         crowding = score_crowding_risk(features)
@@ -127,8 +147,19 @@ class OpportunityScanner:
             "breakdown of SMA structure supporting setup",
         ]
 
-        if regime_fit < 35 or scores.overall < self.min_score:
-            return None
+        if regime_fit < 35:
+            return SymbolReject(
+                symbol,
+                "regime_fit",
+                f"regime_fit={regime_fit:.1f} < 35 under {regime_report.regime.value} "
+                f"for {direction.value} {setup.value}",
+            )
+        if scores.overall < self.min_score:
+            return SymbolReject(
+                symbol,
+                "score_floor",
+                f"overall={scores.overall:.1f} < min_score={self.min_score}",
+            )
         decision = "WATCH" if scores.overall < self.min_score + 10 else "CANDIDATE"
 
         return Opportunity(

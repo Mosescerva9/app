@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any
@@ -154,3 +155,45 @@ def occ_symbol(underlying: str, expiration: date, right: str, strike: float) -> 
     r = "C" if right.upper().startswith("C") else "P"
     strike_int = int(round(strike * 1000))
     return f"{underlying.upper()}{yy}{r}{strike_int:08d}"
+
+
+# Standard OCC only: ROOT + YYMMDD + C|P + 8-digit strike*1000.
+# Adjusted Webull series that start with a digit (2NVDA261016C00210000) are
+# real contracts but get_option_snapshot rejects them (417 INVALID_SYMBOL).
+_STANDARD_OCC = re.compile(r"^[A-Z]{1,6}\d{6}[CP]\d{8}$")
+
+
+def is_standard_occ_option_symbol(raw: str, *, underlying: str = "") -> bool:
+    """True when ``raw`` is snapshot-safe OCC for an optional underlying root."""
+    text = str(raw or "").strip().upper().replace(" ", "")
+    if not _STANDARD_OCC.match(text):
+        return False
+    if not underlying:
+        return True
+    root = underlying.strip().upper()
+    return text.startswith(root) and bool(re.match(rf"^{re.escape(root)}\d{{6}}[CP]\d{{8}}$", text))
+
+
+def normalize_occ_option_symbol(
+    raw: str,
+    *,
+    underlying: str = "",
+    expiration: date | None = None,
+    right: str = "",
+    strike: float | None = None,
+) -> str:
+    """Return a snapshot-safe OCC symbol, or ``""`` to skip the contract.
+
+    Do **not** strip a leading digit from adjusted series (``2NVDA…``) and
+    pretend it is standard OCC — skip those for RESEARCH snapshots.
+    """
+    text = str(raw or "").strip().upper().replace(" ", "")
+    if is_standard_occ_option_symbol(text, underlying=underlying):
+        return text
+    # Rebuild only when the listing omitted a symbol, never from 2ROOT… rows.
+    if text:
+        return ""
+    if underlying and expiration is not None and right and strike is not None and strike > 0:
+        built = occ_symbol(underlying, expiration, right, strike)
+        return built if is_standard_occ_option_symbol(built, underlying=underlying) else ""
+    return ""
