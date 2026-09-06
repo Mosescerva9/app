@@ -76,7 +76,7 @@ MAX_RISK_PER_TRADE_PCT=0.10
 - Max weekly loss: 10% → **$150**
 - `EMERGENCY_STOP=true` blocks trading checks
 
-Long premium only in this phase: LONG equity bias → long calls; SHORT → long puts. No credit spreads or naked short premium.
+Long premium only in this phase: LONG equity bias → long calls; SHORT → long puts. No credit spreads or naked short premium. On the $150 book the engine will list liquid |delta| ≈ 0.08–0.35 (sometimes DTE 14–30) when mid-delta debit does not fit — cheaper OTM, still 1× premium max loss. See `docs/PHASE5_NOTES.md`.
 
 ## Safety rules
 

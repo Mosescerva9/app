@@ -42,7 +42,7 @@ class WebullOptionChainProvider(OptionChainProvider):
         app_secret: str = "",
         region: str = "us",
         api_endpoint: str = "api.sandbox.webull.com",
-        min_dte: int = 30,
+        min_dte: int = 14,
         max_dte: int = 60,
         strike_band: float = _STRIKE_BAND,
     ) -> None:

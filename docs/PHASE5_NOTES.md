@@ -18,12 +18,15 @@ Base: `cursor/trading-system-phase5-options-e1ab`
     `get_option_snapshot` returns 417 INVALID_SYMBOL if they are in the batch.
   - Clear entitlement / `chain_error` notes when OPRA / Advanced Quotes is missing
 - Hard filters for ~$1,500 account / **~$150 max premium×100** (`ACCOUNT_EQUITY_USD=1500`, `MAX_RISK_PER_TRADE_PCT=0.10`)
-  - DTE 30–60
-  - |delta| 0.25–0.45
+  - Prefer DTE 30–60 and |delta| 0.25–0.45 when that debit fits
+  - On a ≤$150 book (or when mid-delta is empty because premium×100 blows the cap):
+    **|delta| 0.08–0.35** and **DTE ≥14**, still requiring OI / spread sanity
   - minimum open interest
   - max bid/ask spread %
   - LONG → calls only; SHORT → long puts only
+  - Hard cap unchanged: mid×100 must be ≤ per-trade risk budget. No credit / naked short.
 - Weighted contract scoring: liquidity, delta_fit, iv_sanity, theta_drag, risk_fit
+  (target |delta| stays ~0.35 so mid-delta still ranks above cheap OTM when both fit)
 - `OptionsAnalysisEngine` selects contracts from Phase 4 equity opportunities
 - CLI: `python -m trading_system options`
 - Live order placement remains **hard-disabled** (`LIVE_EXECUTION_UNLOCKED=False`)
@@ -54,6 +57,27 @@ Operator report: SPY `regime`/`bars` `last_close` ≈ 709 while production snaps
   - `api.sandbox.webull.com` IDs ≠ `api.webull.com` IDs
   - Webull-app paper-trading IDs are not OpenAPI account IDs
 - Endpoints used are only those already in the official SDK (`/openapi/account/list`, `/openapi/assets/balance`, …). No invented paths.
+
+### $150 book vs mid-delta premium (tradeoff)
+
+On NVDA / TSLA / AAPL, liquid |delta| 0.25–0.45 contracts are often **$300–$700** debit.
+Under `MAX` ≈ $150 those names all died on `premium_exceeds_risk_budget`, so RESEARCH
+returned **0 candidates** even when cheaper liquid longs existed.
+
+**What we changed:** when per-trade risk is ≤ $150 — or when the mid-delta band is
+empty solely because of that premium cap — the engine widens long-premium selection
+to **|delta| 0.08–0.35** and **DTE 14–60**, and keeps the best budget-feasible
+contract rather than returning none. Webull chain fetch `min_dte` is 14 so those
+expiries are visible. Scoring still targets |delta| ≈ 0.35, so a mid-delta name
+that *does* fit $150 outranks a 0.10 lottery ticket.
+
+**Tradeoff (accepted):** cheap OTM has less directional fidelity. A 0.10-delta
+long is more lottery-like (lower chance of finishing ITM, more sensitive to IV
+crush / theta). Max loss is still **1× debit**, defined-risk, long premium only.
+This is a RESEARCH listing change so the $150 book can see *something actionable*,
+not a claim that 0.10-delta is as high-quality as 0.35-delta.
+
+**Still locked:** live / paper order placement. `LIVE_EXECUTION_UNLOCKED` stays false.
 
 ### Scanner rejects
 `scan` JSON includes `rejects`, `reject_counts`, and `empty_scan_diagnosis` when `opportunity_count=0` (`no_setup` / `regime_fit` / `score_floor` / `error`).
