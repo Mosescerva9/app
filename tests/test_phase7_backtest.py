@@ -171,6 +171,7 @@ def test_cli_backtest_and_journal_stub(capsys):
         settings=settings,
         market_data=MockMarketDataProvider(),
         risk=load_risk_limits(settings),
+        paper_ledger=PaperLedger(path=None),
     )
     status = runtime.status()
     assert status["research_complete"] is False
@@ -199,10 +200,20 @@ def test_cli_backtest_and_journal_stub(capsys):
     assert "phase9_complete" in printed
 
 
+def test_paper_ledger_file_roundtrip(tmp_path):
+    bars = synthetic_trend_bars(n_up=80, n_down=20)
+    report = LongPremiumBacktester(lookback=60).run(bars)
+    path = tmp_path / "journal.json"
+    PaperLedger(path=path).record_backtest(report)
+    reloaded = PaperLedger(path=path)
+    assert reloaded.to_dict()["phase9_complete"] is False
+    assert reloaded.to_dict()["entry_count"] == len(report.trades)
+
+
 def test_paper_ledger_records_backtest_without_claiming_complete():
     bars = synthetic_trend_bars(n_up=80, n_down=20)
     report = LongPremiumBacktester(lookback=60).run(bars)
-    ledger = PaperLedger()
+    ledger = PaperLedger(path=None)
     ledger.record_backtest(report)
     dumped = ledger.to_dict()
     assert dumped["phase9_complete"] is False
