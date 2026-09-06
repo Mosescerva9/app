@@ -1,4 +1,4 @@
-"""System operating modes. Live execution remains locked (Phase 7+8 research)."""
+"""System operating modes. Live execution remains locked (Phase 9 paper journal)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ class TradingMode(str, Enum):
     LIVE_APPROVAL = "LIVE_APPROVAL"
 
 
-PHASE = 8
+PHASE = 9
 LIVE_EXECUTION_UNLOCKED = False
 
 

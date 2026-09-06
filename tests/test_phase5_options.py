@@ -113,7 +113,7 @@ def _long_opportunity(symbol: str = "NVDA", entry: float = 180.0) -> Opportunity
 
 
 def test_phase_is_five():
-    assert PHASE == 8
+    assert PHASE == 9
     assert LIVE_EXECUTION_UNLOCKED is False
 
 

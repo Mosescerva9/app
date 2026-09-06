@@ -47,14 +47,12 @@ Installed `webull-openapi-python-sdk` `DataClient.fundamentals` methods used:
 
 Package-level fundamentals dimension is satisfied by official EPS beat/miss **or** official statements/indicators (`present`/`partial`) **or** ETF `not_applicable`.
 
-#### Phase 9 stub
-- `python -m trading_system journal` is a **thin JSON stub** (`data/paper_journal.json`, gitignored)
-- Backtest appends research rows; not a paper-broker loop
-- `phase9_complete=false`
+#### Phase 9 (later slice)
+Phase 9 is no longer a stub. See [`docs/PHASE9_NOTES.md`](PHASE9_NOTES.md).
+Backtest rows remain journal **annotations** and do not debit paper cash.
 
 ### Still deferred / honest limits
 - Historical option chains / IV surface (backtest uses a decaying-extrinsic proxy)
-- Full paper journal (day/week P&L, broker paper fills) — stub only
 - Dashboard / Grok brief
 - Live LLM critique
 - Sandbox / live execution

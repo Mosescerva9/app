@@ -204,8 +204,8 @@ REQUIRED_CATALYST_KEYS = {
 }
 
 
-def test_phase_is_eight_and_execution_locked():
-    assert PHASE == 8
+def test_phase_is_nine_and_execution_locked():
+    assert PHASE == 9
     assert LIVE_EXECUTION_UNLOCKED is False
 
 
@@ -505,7 +505,7 @@ def test_runtime_decide_and_cli_emit_packages(capsys):
         catalyst_provider=MockCatalystProvider(),
     )
     status = runtime.status()
-    assert status["phase"] == 8
+    assert status["phase"] == 9
     assert status["live_execution_unlocked"] is False
     assert status["research_complete"] is False
     assert status["trade_recommendation"] is False

@@ -1,3 +1,3 @@
-"""AI trading research system — Decision Packages + Phase 7 backtester (read-only RESEARCH)."""
+"""AI trading research system — Decision Packages + paper journal (read-only RESEARCH)."""
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"

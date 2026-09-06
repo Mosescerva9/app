@@ -25,7 +25,7 @@ def _print(data: object) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="trading-system",
-        description="AI trading research system — Phase 7 backtester + Phase 8 packages (no order placement)",
+        description="AI trading research system — Phase 9 paper journal (no order placement)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -107,8 +107,39 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser(
         "journal",
-        help="Show the Phase 9 paper-journal stub (not a broker paper loop)",
+        help="Show the Phase 9 paper ledger (simulated account; not a broker)",
     )
+
+    paper_open = sub.add_parser(
+        "paper-open",
+        help="PAPER-ONLY: simulate opening a long-premium idea from a Decision Package (no broker order)",
+    )
+    paper_open.add_argument("symbol")
+    paper_open.add_argument("--quantity", type=int, default=1)
+    paper_open.add_argument("--benchmark", default="SPY")
+    paper_open.add_argument("--lookback", type=int, default=90)
+    paper_open.add_argument("--min-equity-score", type=float, default=55.0)
+    paper_open.add_argument("--min-option-score", type=float, default=55.0)
+
+    paper_close = sub.add_parser(
+        "paper-close",
+        help="PAPER-ONLY: simulate closing a paper position at an exit mark (no broker order)",
+    )
+    paper_close.add_argument("position_id")
+    paper_close.add_argument(
+        "--exit-mark",
+        type=float,
+        required=True,
+        help="Exit premium USD per contract (long-premium mark, not a live quote requirement)",
+    )
+    paper_close.add_argument("--reason", default="manual_paper_close")
+
+    paper_note = sub.add_parser(
+        "paper-note",
+        help="PAPER-ONLY: append a journal note without changing the ledger cash",
+    )
+    paper_note.add_argument("text")
+    paper_note.add_argument("--symbol", default="")
 
     return parser
 
@@ -183,6 +214,30 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "journal":
         _print(runtime.journal())
+        return 0
+    if args.command == "paper-open":
+        _print(
+            runtime.paper_open(
+                args.symbol,
+                quantity=args.quantity,
+                benchmark=args.benchmark,
+                lookback=args.lookback,
+                min_equity_score=args.min_equity_score,
+                min_option_score=args.min_option_score,
+            )
+        )
+        return 0
+    if args.command == "paper-close":
+        _print(
+            runtime.paper_close(
+                args.position_id,
+                exit_mark_usd=args.exit_mark,
+                reason=args.reason,
+            )
+        )
+        return 0
+    if args.command == "paper-note":
+        _print(runtime.paper_note(args.text, symbol=args.symbol))
         return 0
 
     parser.error(f"Unknown command {args.command}")
