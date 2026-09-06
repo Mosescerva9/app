@@ -1,4 +1,4 @@
-"""System operating modes. Live execution remains locked through Phase 8."""
+"""System operating modes. Live execution remains locked (Phase 7+8 research)."""
 
 from __future__ import annotations
 

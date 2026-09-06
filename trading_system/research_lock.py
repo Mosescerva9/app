@@ -6,19 +6,22 @@ from typing import Any
 
 from trading_system.modes import LIVE_EXECUTION_UNLOCKED
 
-# System-level RESEARCH_COMPLETE stays false until backtester + paper journal
-# exist. Package-level completeness (catalyst + fundamentals + option) only
-# lifts incomplete_research on that row — it still does not authorize a GO.
+# System-level RESEARCH_COMPLETE stays false until the documented checklist
+# is honestly met (backtester exists; paper journal is still a stub).
+# Package-level completeness only lifts incomplete_research on that row —
+# it still does not authorize a GO.
 RESEARCH_COMPLETE = False
 GO_SIGNALS_ALLOWED = False
 
 RESEARCH_LOCK_NOTE = (
     "Partial TA/options is not RESEARCH_COMPLETE and is not a trade recommendation. "
     "Required Decision Package dimensions: regime/equity scores, long-premium option, "
-    "official catalyst (or ETF not_applicable), official fundamentals/forecast-EPS "
-    "(or ETF not_applicable), adversarial critique. Missing/unavailable dimensions "
-    "force stand_aside + incomplete_research. Live execution stays locked. "
-    "Still deferred: full statements, backtester, paper journal, live exec."
+    "official catalyst (or ETF not_applicable), official fundamentals "
+    "(forecast-EPS and/or statements/indicators, or ETF not_applicable), "
+    "adversarial critique. Missing/unavailable dimensions force stand_aside + "
+    "incomplete_research. Live execution stays locked. "
+    "Phase 7 backtester exists (synthetic long-premium, OOS/walk-forward). "
+    "Phase 9 paper journal is a stub. RESEARCH_COMPLETE remains false."
 )
 
 

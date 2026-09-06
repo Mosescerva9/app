@@ -25,7 +25,7 @@ def _print(data: object) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="trading-system",
-        description="AI trading research system — Phase 8 Decision Packages (no order placement)",
+        description="AI trading research system — Phase 7 backtester + Phase 8 packages (no order placement)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -90,6 +90,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional custom universe (default: liquid large-caps/ETFs)",
     )
 
+    backtest = sub.add_parser(
+        "backtest",
+        help="Cost/slippage-aware long-premium backtest (no look-ahead; RESEARCH only)",
+    )
+    backtest.add_argument("symbol", nargs="?", default="SPY")
+    backtest.add_argument("--timespan", default="D")
+    backtest.add_argument("--count", type=int, default=180)
+    backtest.add_argument("--lookback", type=int, default=60)
+    backtest.add_argument(
+        "--split",
+        default="oos",
+        choices=("oos", "walk_forward"),
+        help="oos = chronological 70/30; walk_forward = rolling train/test folds",
+    )
+
+    sub.add_parser(
+        "journal",
+        help="Show the Phase 9 paper-journal stub (not a broker paper loop)",
+    )
+
     return parser
 
 
@@ -149,6 +169,20 @@ def main(argv: list[str] | None = None) -> int:
                 symbols=args.symbols,
             )
         )
+        return 0
+    if args.command == "backtest":
+        _print(
+            runtime.backtest(
+                args.symbol,
+                timespan=args.timespan,
+                count=args.count,
+                lookback=args.lookback,
+                split=args.split,
+            )
+        )
+        return 0
+    if args.command == "journal":
+        _print(runtime.journal())
         return 0
 
     parser.error(f"Unknown command {args.command}")

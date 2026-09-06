@@ -10,6 +10,7 @@ from trading_system.adversarial import (
     NullLLMCritic,
     RuleBasedAdversarialCritic,
 )
+from trading_system.backtest import CostModel, LongPremiumBacktester, PremiumSpec
 from trading_system.broker import build_broker_client
 from trading_system.broker.base import BrokerReadClient
 from trading_system.config import Settings, get_settings
@@ -18,6 +19,7 @@ from trading_system.data.base import MarketDataProvider
 from trading_system.decision import DecisionPackageEngine
 from trading_system.events import CatalystProvider, build_catalyst_provider
 from trading_system.fundamentals import FundamentalsProvider, build_fundamentals_provider
+from trading_system.journal import PaperLedger
 from trading_system.modes import PHASE, assert_mode_allowed
 from trading_system.research_lock import stamp_research_lock
 from trading_system.options import OptionsAnalysisEngine, build_option_chain_provider
@@ -45,6 +47,7 @@ class ResearchRuntime:
         fundamentals_provider: FundamentalsProvider | None = None,
         critic: AdversarialCritic | None = None,
         decision_engine: DecisionPackageEngine | None = None,
+        paper_ledger: PaperLedger | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         assert_mode_allowed(self.settings.mode)
@@ -76,6 +79,7 @@ class ResearchRuntime:
             critic=self.critic,
             risk=self.risk,
         )
+        self.paper_ledger = paper_ledger or PaperLedger()
 
     def status(self) -> dict:
         return stamp_research_lock({
@@ -94,6 +98,8 @@ class ResearchRuntime:
                 type(self.fundamentals_provider).__name__,
             ),
             "adversarial_critic": getattr(self.critic, "name", type(self.critic).__name__),
+            "paper_journal": "stub",
+            "backtester": "regime_filtered_long_premium",
             "webull_configured": self.settings.webull_configured,
             "webull_api_endpoint": self.settings.webull_api_endpoint,
             "risk": {
@@ -316,6 +322,34 @@ class ResearchRuntime:
             max_packages=max_results,
         )
         return stamp_research_lock(engine.build().to_dict(), command="decide")
+
+    def backtest(
+        self,
+        symbol: str,
+        *,
+        timespan: str = "D",
+        count: int = 180,
+        lookback: int = 60,
+        split: str = "oos",
+        record_journal: bool = True,
+    ) -> dict:
+        bars = self.market_data.get_history_bars(symbol, timespan=timespan, count=count)
+        engine = LongPremiumBacktester(
+            lookback=lookback,
+            cost_model=CostModel(),
+            premium=PremiumSpec(max_debit_usd=self.risk.max_risk_per_trade_usd),
+            risk=self.risk,
+            split_mode=split,
+        )
+        report = engine.run(bars, symbol=symbol)
+        if record_journal:
+            self.paper_ledger.record_backtest(report)
+        payload = report.to_dict()
+        payload["journal_stub_recorded"] = bool(record_journal)
+        return stamp_research_lock(payload, command="backtest")
+
+    def journal(self) -> dict:
+        return stamp_research_lock(self.paper_ledger.to_dict(), command="journal")
 
     def _snapshot_last(self, symbol: str) -> float | None:
         try:
