@@ -5,9 +5,44 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 from datetime import date, datetime
 
 from trading_system.services.runtime import ResearchRuntime
+
+_LOG_FORMAT = "%(levelname)s %(name)s: %(message)s"
+
+
+def _iter_loggers() -> list[logging.Logger]:
+    loggers = [logging.getLogger()]
+    for name in logging.root.manager.loggerDict:
+        logger = logging.getLogger(name)
+        if isinstance(logger, logging.Logger):
+            loggers.append(logger)
+    return loggers
+
+
+def _steer_logging_off_stdout(*, min_level: int) -> None:
+    """Keep report stdout clean when an SDK attaches INFO handlers to stdout."""
+    for logger in _iter_loggers():
+        for handler in list(logger.handlers):
+            if getattr(handler, "stream", None) is sys.stdout:
+                logger.removeHandler(handler)
+        if logger is logging.getLogger():
+            logger.setLevel(min_level)
+
+
+def configure_logging(*, command: str = "") -> None:
+    """Send logs to stderr. Report uses WARNING+ so stdout stays text-only."""
+    level = logging.WARNING if command == "report" else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format=_LOG_FORMAT,
+        stream=sys.stderr,
+        force=True,
+    )
+    if command == "report":
+        _steer_logging_off_stdout(min_level=logging.WARNING)
 
 
 def _json_default(obj: object) -> str:
@@ -169,8 +204,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    configure_logging(command=args.command)
     runtime = ResearchRuntime()
+    if args.command == "report":
+        # Webull SDK init may attach its own stdout INFO handlers after import.
+        _steer_logging_off_stdout(min_level=logging.WARNING)
 
     if args.command == "status":
         _print(runtime.status())

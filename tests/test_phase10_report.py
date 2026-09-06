@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import sys
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -13,7 +15,7 @@ from trading_system.adversarial import (
 )
 from trading_system.backtest import LongPremiumBacktester, synthetic_trend_bars
 from trading_system.broker.mock import MockBrokerReadClient
-from trading_system.cli import main
+from trading_system.cli import configure_logging, main
 from trading_system.config import Settings
 from trading_system.data.mock import MockMarketDataProvider
 from trading_system.decision import DecisionPackageEngine
@@ -270,6 +272,18 @@ def test_complete_candidate_may_set_paper_flags_never_broker_go():
     assert pkg["paper_research_candidate"] is paper
 
 
+def _assert_report_text(printed: str, *, weekly: bool = False) -> None:
+    """Do not require stdout to start with '=' — SDK INFO may precede the banner."""
+    heading = "WEEKLY RESEARCH REPORT" if weekly else "RESEARCH REPORT"
+    assert heading in printed
+    assert "research_complete" in printed
+    assert "live_execution_unlocked: false" in printed
+    assert "STATUS" in printed
+    assert "DECIDE" in printed
+    assert "go_signal: false" in printed
+    assert '"packages"' not in printed
+
+
 def test_cli_report_is_text_only_and_never_places_orders(capsys):
     broker = SpyBroker()
     runtime = _runtime(broker=broker)
@@ -282,20 +296,48 @@ def test_cli_report_is_text_only_and_never_places_orders(capsys):
     rc = main(["report", "--symbols", "AAPL"])
     assert rc == 0
     printed = capsys.readouterr().out
-    assert "RESEARCH REPORT" in printed
-    assert "STATUS" in printed
-    assert "DECIDE" in printed
-    assert printed.strip().startswith("=")
-    assert '"packages"' not in printed
+    _assert_report_text(printed)
     assert payload["research_command"] == "report"
+    assert payload["live_execution_unlocked"] is False
+    assert payload["go_signal"] is False
+
+
+def test_cli_report_survives_sdk_stdout_info_logs(capsys, monkeypatch):
+    """Operator-box case: live Webull SDK INFO hits stdout before the banner."""
+    real_init = ResearchRuntime.__init__
+
+    def noisy_init(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        sdk = logging.getLogger("webull.sdk")
+        sdk.setLevel(logging.INFO)
+        sdk.propagate = False
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(logging.INFO)
+        sdk.addHandler(handler)
+        sdk.info("SDK connecting to api.webull.com")
+        try:
+            return real_init(self, *args, **kwargs)
+        finally:
+            sdk.removeHandler(handler)
+
+    monkeypatch.setattr(ResearchRuntime, "__init__", noisy_init)
+    rc = main(["report", "--symbols", "AAPL"])
+    assert rc == 0
+    printed = capsys.readouterr().out
+    _assert_report_text(printed)
+
+
+def test_report_logging_goes_to_stderr_not_stdout(capsys):
+    configure_logging(command="report")
+    logging.getLogger("webull").info("sdk handshake should not hit report stdout")
+    captured = capsys.readouterr()
+    assert "sdk handshake" not in captured.out
 
 
 def test_cli_weekly_flag(capsys):
     rc = main(["report", "--weekly", "--symbols", "AAPL"])
     assert rc == 0
     printed = capsys.readouterr().out
-    assert "WEEKLY RESEARCH REPORT" in printed
-    assert "live_execution_unlocked: false" in printed
+    _assert_report_text(printed, weekly=True)
 
 
 def test_report_builder_survives_section_errors():

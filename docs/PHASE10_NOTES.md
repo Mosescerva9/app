@@ -24,6 +24,8 @@ research-desk flag only.
 - `go_signal` (broker GO) stays **false**
 - `LIVE_EXECUTION_UNLOCKED` stays **false**
 - Sandbox / live execution adapters are **not** imported or required
+- `report` sends logging to **stderr** at WARNING+ so stdout stays the text brief
+  (Webull SDK INFO must not pollute Grok's report)
 
 ### Honest limits (not RESEARCH_COMPLETE blockers)
 - No visual dashboard / alerts UI
