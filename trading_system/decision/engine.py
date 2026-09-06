@@ -11,6 +11,7 @@ from trading_system.adversarial.base import (
 )
 from trading_system.adversarial.llm import NullLLMCritic
 from trading_system.adversarial.rules import RuleBasedAdversarialCritic
+from trading_system.decision.scoring import blend_decision_overall
 from trading_system.decision.types import DecisionPackage, DecisionReport, DecisionScores
 from trading_system.events.base import CatalystProvider
 from trading_system.events.mock import MockCatalystProvider
@@ -241,9 +242,17 @@ class DecisionPackageEngine:
             )
 
         option_quality = option.scores.overall if option is not None else None
-        blended = opportunity.scores.overall
-        if option_quality is not None:
-            blended = 0.55 * opportunity.scores.overall + 0.45 * option_quality
+        blended, weights_used = blend_decision_overall(
+            technical=opportunity.scores.technical,
+            momentum=opportunity.scores.momentum,
+            liquidity=opportunity.scores.liquidity,
+            regime_fit=opportunity.scores.regime_fit,
+            risk_reward=opportunity.scores.risk_reward,
+            crowding_risk=opportunity.scores.crowding_risk,
+            options_quality=option_quality,
+            catalyst=catalyst.score,
+            fundamental=fundamentals.score,
+        )
         extra_penalty = 0.0
         if not fundamentals.available and fundamentals.beat_miss != "not_applicable":
             extra_penalty += 12.0
@@ -270,6 +279,7 @@ class DecisionPackageEngine:
             overall=round(blended, 2),
             confidence=round(confidence, 2),
             missing_dimensions=tuple(missing),
+            weights_used=weights_used,
         )
         incomplete = bool(missing_required)
         recommendation = _recommendation(
@@ -311,6 +321,7 @@ class DecisionPackageEngine:
             adversarial=critique,
             incomplete_research=incomplete,
             missing_required=missing_required,
+            go_signal=False,
             risk={
                 "account_equity_usd": self.risk.account_equity_usd,
                 "max_risk_per_trade_usd": self.risk.max_risk_per_trade_usd,

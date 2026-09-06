@@ -182,6 +182,7 @@ REQUIRED_PACKAGE_KEYS = {
     "notes",
     "incomplete_research",
     "missing_required",
+    "go_signal",
     "live_execution_unlocked",
 }
 
@@ -232,6 +233,10 @@ def test_decision_package_shape_includes_catalyst_and_adversarial():
     assert pkg["risk"]["long_premium_only"] is True
     assert pkg["risk"]["max_risk_per_trade_usd"] == 150.0
     assert pkg["live_execution_unlocked"] is False
+    assert pkg["go_signal"] is False
+    assert payload["research_complete"] is False
+    assert payload["trade_recommendation"] is False
+    assert payload["go_signal_count"] == 0
 
 
 def test_unavailable_catalyst_does_not_crash_and_lowers_confidence():
@@ -337,6 +342,7 @@ def test_candidate_allowed_only_when_research_dimensions_present():
     assert pkg.fundamentals.available is True
     assert pkg.recommendation in {"candidate", "watch"}
     assert pkg.recommendation not in {"stand_aside", "reject"}
+    assert pkg.go_signal is False
 
 
 def test_rule_critic_emergency_stop_reject():
@@ -501,6 +507,8 @@ def test_runtime_decide_and_cli_emit_packages(capsys):
     status = runtime.status()
     assert status["phase"] == 8
     assert status["live_execution_unlocked"] is False
+    assert status["research_complete"] is False
+    assert status["trade_recommendation"] is False
     assert status["catalyst_provider"] == "mock"
     payload = runtime.decide(symbols=["AAPL", "MSFT"], min_equity_score=40.0, min_option_score=40.0)
     assert "packages" in payload
@@ -527,7 +535,49 @@ def test_empty_options_report_still_emits_packages():
     assert REQUIRED_PACKAGE_KEYS <= set(pkg)
     assert REQUIRED_ADVERSARIAL_KEYS <= set(pkg["adversarial"])
     assert pkg["catalyst"]["available"] is False
-    assert pkg["recommendation"] in {"stand_aside", "reject", "watch", "candidate"}
+    assert pkg["incomplete_research"] is True
+    assert pkg["recommendation"] in {"stand_aside", "reject"}
+    assert pkg["go_signal"] is False
+
+
+def test_scan_and_options_cli_are_not_trade_recommendations():
+    settings = _settings()
+    runtime = ResearchRuntime(
+        settings=settings,
+        market_data=MockMarketDataProvider(),
+        broker=MockBrokerReadClient(equity=1500),
+        risk=load_risk_limits(settings),
+    )
+    scan = runtime.scan_opportunities(symbols=["AAPL", "MSFT"], min_score=40.0)
+    options = runtime.analyze_options(symbols=["AAPL"], min_equity_score=40.0, min_option_score=40.0)
+    for payload, command in ((scan, "scan"), (options, "options")):
+        assert payload["trade_recommendation"] is False
+        assert payload["research_complete"] is False
+        assert payload["go_signals_allowed"] is False
+        assert payload["live_execution_unlocked"] is False
+        assert payload["research_command"] == command
+
+
+def test_decision_weights_include_catalyst_and_fundamental_when_present():
+    from trading_system.decision.scoring import DECISION_WEIGHTS, blend_decision_overall
+
+    assert abs(sum(DECISION_WEIGHTS.values()) - 1.0) < 1e-9
+    assert "catalyst" in DECISION_WEIGHTS
+    assert "fundamental" in DECISION_WEIGHTS
+    overall, weights = blend_decision_overall(
+        technical=70,
+        momentum=65,
+        liquidity=80,
+        regime_fit=75,
+        risk_reward=70,
+        crowding_risk=20,
+        options_quality=72,
+        catalyst=78,
+        fundamental=72,
+    )
+    assert overall > 60
+    assert "catalyst" in weights
+    assert "fundamental" in weights
 
 
 def test_decision_package_dataclass_roundtrip_keys():

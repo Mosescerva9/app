@@ -310,5 +310,7 @@ Grok is the **oversight + conversation layer**, not the unsupervised execution b
 ## Next action
 
 Phase 8 research slice is implemented: `python -m trading_system decide` emits Decision Packages
-(technical + options + catalyst + adversarial). Live execution remains locked until section **L**
+(technical + options + catalyst + fundamentals + adversarial). **`RESEARCH_COMPLETE` is false.**
+CLI `scan`/`options`/`decide` stamp `trade_recommendation=false` and never emit a GO when
+required dimensions are missing. Live execution remains locked until section **L**
 item 5 and a later explicit unlock. Phase 7 backtester and Phases 9–12 are still deferred.

@@ -21,6 +21,7 @@ Read-only market data, regime, opportunity scan, long-premium options research, 
 | Fundamentals (minimal forecast-EPS) | ✅ official `get_forecast_eps` or mock-unavailable — no invented statements |
 | Adversarial critique (rule-based + LLM hook) | ✅ deterministic; no live LLM in CI |
 | Decision Packages | ✅ `decide` refuses `candidate`/GO when research is incomplete |
+| RESEARCH_COMPLETE / GO lock | ❌ system `research_complete=false`; all CLI surfaces stamp `trade_recommendation=false` |
 | CLI: `status`, `bars`, `snapshots`, `regime`, `scan`, `options`, `decide`, `account` | ✅ |
 | Order placement | ❌ intentionally disabled |
 
@@ -101,7 +102,7 @@ Numbering follows [`docs/ARCHITECTURE_AUDIT.md`](docs/ARCHITECTURE_AUDIT.md). Lo
 5. Quantitative scoring (in scanner) ✅
 6. Options engine + research hardening ✅
 7. Backtester — **deferred**
-8. Adversarial + Decision Packages ✅ (this branch; rule-based critic, official earnings/filings adapter)
+8. Adversarial + Decision Packages ✅ (rule-based critic, official earnings/filings/forecast-EPS; **not RESEARCH_COMPLETE**)
 9. Paper trading ledger — **deferred**
 10. Dashboard + Grok daily brief — **deferred**
 11. Sandbox execution (still gated)

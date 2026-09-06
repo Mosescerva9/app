@@ -47,9 +47,18 @@ A **package** may set `incomplete_research=false` only when **all** of these are
 | Fundamentals (official forecast-EPS or ETF `not_applicable`) | Phase 8 minimal |
 | Adversarial critique (no instant reject / stand-aside) | Phase 8 rules |
 
-`decide` **will not emit `recommendation=candidate`** (a trade recommendation / GO) when any required dimension is missing or unavailable. That is `stand_aside` + `incomplete_research=true`.
+`decide` **will not emit `recommendation=candidate`** when any required dimension is missing or unavailable (`stand_aside` + `incomplete_research=true`).
 
-**System-level RESEARCH_COMPLETE is not claimed.** Still deferred before any real GO workflow:
+Every CLI payload (`status`, `scan`, `options`, `decide`) stamps:
+
+- `research_complete=false`
+- `trade_recommendation=false`
+- `go_signals_allowed=false`
+- `go_signal=false` on each package
+
+`scan` / `options` are TA/options research only — they are **not** GO signals even when they list a `CANDIDATE` setup.
+
+**System-level `RESEARCH_COMPLETE` is false** until the deferred items below exist. A package with all required dimensions is still not a live trade recommendation.
 
 - Full fundamentals (statements, industry comps, analyst targets beyond last EPS)
 - Backtester / walk-forward / OOS (audit Phase 7)
