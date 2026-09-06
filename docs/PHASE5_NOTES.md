@@ -85,8 +85,9 @@ not a claim that 0.10-delta is as high-quality as 0.35-delta.
 ### Still locked / deferred
 - Live / paper order placement, preview-as-submit, autonomous execution
 - Multi-leg strategies (credit spreads, iron condors, short premium)
-- Backtester
-- Paper ledger / `LIVE_APPROVAL` unlock
+- Backtester (audit Phase 7)
+- Paper ledger / `LIVE_APPROVAL` unlock (audit Phases 9 / 12)
+- Decision Packages / catalyst / adversarial → see `docs/PHASE8_NOTES.md`
 
 ### Try
 ```bash
@@ -96,6 +97,7 @@ python -m trading_system snapshots SPY
 python -m trading_system regime --benchmark SPY
 python -m trading_system scan --symbols AAPL MSFT NVDA SPY --min-score 50
 python -m trading_system options --symbols AAPL MSFT NVDA SPY --min-option-score 50
+python -m trading_system decide --symbols AAPL MSFT NVDA SPY --min-equity-score 50
 python -m trading_system account
 pytest -q
 ```

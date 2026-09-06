@@ -1,6 +1,6 @@
 # AI Trading Research System
 
-Read-only market data, regime, opportunity scan, and **long-premium options research**. Default account model: **$1,500 equity / ~$150 max risk per trade**.
+Read-only market data, regime, opportunity scan, long-premium options research, and **Decision Packages** (catalyst + adversarial). Default account model: **$1,500 equity / ~$150 max risk per trade**.
 
 **No live or paper order placement.** `LIVE_EXECUTION_UNLOCKED` stays false.
 
@@ -17,11 +17,15 @@ Read-only market data, regime, opportunity scan, and **long-premium options rese
 | Webull broker read adapter | ✅ same-endpoint account ids; sandbox ≠ prod |
 | Opportunity scan with reject diagnosis | ✅ |
 | Options engine (long calls / long puts only) | ✅ ~$150 premium×100 cap |
-| CLI: `status`, `bars`, `snapshots`, `regime`, `scan`, `options`, `account` | ✅ |
+| Catalyst / news-events (earnings proximity, filing flags) | ✅ official Webull fundamentals or mock-unavailable — no invented news |
+| Adversarial critique (rule-based + LLM hook) | ✅ deterministic; no live LLM in CI |
+| Decision Packages | ✅ `python -m trading_system decide` |
+| CLI: `status`, `bars`, `snapshots`, `regime`, `scan`, `options`, `decide`, `account` | ✅ |
 | Order placement | ❌ intentionally disabled |
 
 Architecture audit: [`docs/ARCHITECTURE_AUDIT.md`](docs/ARCHITECTURE_AUDIT.md)  
-Options / hardening notes: [`docs/PHASE5_NOTES.md`](docs/PHASE5_NOTES.md)
+Options / hardening notes: [`docs/PHASE5_NOTES.md`](docs/PHASE5_NOTES.md)  
+Decision Packages: [`docs/PHASE8_NOTES.md`](docs/PHASE8_NOTES.md)
 
 ## Quick start (offline / mock)
 
@@ -37,6 +41,7 @@ python -m trading_system snapshots AAPL SPY QQQ
 python -m trading_system regime
 python -m trading_system scan
 python -m trading_system options
+python -m trading_system decide
 python -m trading_system account
 pytest -q
 ```
@@ -86,14 +91,17 @@ Long premium only in this phase: LONG equity bias → long calls; SHORT → long
 
 ## Phase map
 
+Numbering follows [`docs/ARCHITECTURE_AUDIT.md`](docs/ARCHITECTURE_AUDIT.md). Local Phases 4–5 shipped scoring + options early (audit 5–6).
+
 1. Architecture audit ✅
 2. Scaffold + market/account data ✅
 3. Regime engine ✅
 4. Scanner / scoring ✅
-5. Options engine + research hardening ✅ (this branch)
-6. Backtester (deferred)
-7. Adversarial review
-8. Paper trading ledger
-9. Dashboard + Grok daily brief
-10. Sandbox execution (still gated)
-11. `LIVE_APPROVAL` only after your explicit go-ahead
+5. Quantitative scoring (in scanner) ✅
+6. Options engine + research hardening ✅
+7. Backtester — **deferred**
+8. Adversarial + Decision Packages ✅ (this branch; rule-based critic, official earnings/filings adapter)
+9. Paper trading ledger — **deferred**
+10. Dashboard + Grok daily brief — **deferred**
+11. Sandbox execution (still gated)
+12. `LIVE_APPROVAL` only after your explicit go-ahead

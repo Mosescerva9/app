@@ -10,4 +10,4 @@ Scaffold delivered on branch `cursor/trading-system-phase2-scaffold-e1ab`:
 - CLI: `python -m trading_system {status,bars,snapshots,account}`
 - Tests: mock-only, no live orders
 
-**Still locked:** order placement, autonomous live trading, regime/scanner/options engines (Phases 3+).
+**Still locked:** order placement, autonomous live trading. Later phases added regime/scanner/options/decision packages; execution remains locked.

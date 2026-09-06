@@ -5,13 +5,15 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from datetime import datetime
+from datetime import date, datetime
 
 from trading_system.services.runtime import ResearchRuntime
 
 
 def _json_default(obj: object) -> str:
     if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, date):
         return obj.isoformat()
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
@@ -23,7 +25,7 @@ def _print(data: object) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="trading-system",
-        description="AI trading research system — Phase 5 (options + scanner + regime; no order placement)",
+        description="AI trading research system — Phase 8 Decision Packages (no order placement)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -72,6 +74,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional custom universe (default: liquid large-caps/ETFs)",
     )
 
+    decide = sub.add_parser(
+        "decide",
+        help="Emit Decision Packages (technical + options + catalyst + adversarial)",
+    )
+    decide.add_argument("--benchmark", default="SPY")
+    decide.add_argument("--lookback", type=int, default=90)
+    decide.add_argument("--min-equity-score", type=float, default=55.0)
+    decide.add_argument("--min-option-score", type=float, default=55.0)
+    decide.add_argument("--max-results", type=int, default=10)
+    decide.add_argument(
+        "--symbols",
+        nargs="+",
+        default=None,
+        help="Optional custom universe (default: liquid large-caps/ETFs)",
+    )
+
     return parser
 
 
@@ -111,6 +129,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "options":
         _print(
             runtime.analyze_options(
+                benchmark=args.benchmark,
+                lookback=args.lookback,
+                min_equity_score=args.min_equity_score,
+                min_option_score=args.min_option_score,
+                max_results=args.max_results,
+                symbols=args.symbols,
+            )
+        )
+        return 0
+    if args.command == "decide":
+        _print(
+            runtime.decide(
                 benchmark=args.benchmark,
                 lookback=args.lookback,
                 min_equity_score=args.min_equity_score,
