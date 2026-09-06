@@ -6,7 +6,8 @@ Branch: `cursor/trading-system-phase4-scanner-e1ab`
 - Liquid default universe (large-caps + ETFs)
 - OHLCV feature extraction (trend, momentum, ATR%, volume z, pullback/extension)
 - Weighted scoring with documented base weights and renormalization when dimensions are missing
-- Deferred dimensions explicitly excluded: `options_quality`, `catalyst`, `fundamental`
+- Scanner weighted score still excludes `options_quality` / `catalyst` / `fundamental` (renormalize).
+  Architecture Phase 8 attaches **catalyst** on the Decision Package (`decide`), not inside `scan` weights.
 - Setup selection: breakout, pullback, momentum, mean-reversion, relative strength, stand-aside
 - Provisional entry / stop / target + RR
 - Regime-fit scoring using Phase 3 regime engine

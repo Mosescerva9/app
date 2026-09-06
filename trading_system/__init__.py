@@ -1,3 +1,3 @@
-"""AI trading research system — Phase 2 scaffold (read-only + research mode)."""
+"""AI trading research system — Decision Packages (read-only RESEARCH)."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

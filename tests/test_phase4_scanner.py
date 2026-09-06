@@ -40,7 +40,7 @@ def _trend_bars(n: int = 90, start: float = 100.0, drift: float = 0.004) -> list
 
 
 def test_phase_is_four():
-    assert PHASE == 5
+    assert PHASE == 8
 
 
 def test_weights_documented_and_sum_near_one():

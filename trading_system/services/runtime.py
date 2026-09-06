@@ -4,12 +4,22 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
+from trading_system.adversarial import (
+    AdversarialCritic,
+    CompositeAdversarialCritic,
+    NullLLMCritic,
+    RuleBasedAdversarialCritic,
+)
 from trading_system.broker import build_broker_client
 from trading_system.broker.base import BrokerReadClient
 from trading_system.config import Settings, get_settings
 from trading_system.data import build_market_data_provider
 from trading_system.data.base import MarketDataProvider
-from trading_system.modes import PHASE, LIVE_EXECUTION_UNLOCKED, assert_mode_allowed
+from trading_system.decision import DecisionPackageEngine
+from trading_system.events import CatalystProvider, build_catalyst_provider
+from trading_system.fundamentals import FundamentalsProvider, build_fundamentals_provider
+from trading_system.modes import PHASE, assert_mode_allowed
+from trading_system.research_lock import stamp_research_lock
 from trading_system.options import OptionsAnalysisEngine, build_option_chain_provider
 from trading_system.regime import MarketRegimeEngine
 from trading_system.risk import RiskLimits, load_risk_limits
@@ -31,6 +41,10 @@ class ResearchRuntime:
         regime_engine: MarketRegimeEngine | None = None,
         scanner: OpportunityScanner | None = None,
         options_engine: OptionsAnalysisEngine | None = None,
+        catalyst_provider: CatalystProvider | None = None,
+        fundamentals_provider: FundamentalsProvider | None = None,
+        critic: AdversarialCritic | None = None,
+        decision_engine: DecisionPackageEngine | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         assert_mode_allowed(self.settings.mode)
@@ -45,16 +59,41 @@ class ResearchRuntime:
             chain_provider=chain,
             risk=self.risk,
         )
+        self.catalyst_provider = catalyst_provider or build_catalyst_provider(
+            self.settings, self.market_data
+        )
+        self.fundamentals_provider = fundamentals_provider or build_fundamentals_provider(
+            self.settings, self.market_data
+        )
+        self.critic = critic or CompositeAdversarialCritic(
+            RuleBasedAdversarialCritic(),
+            NullLLMCritic(),
+        )
+        self.decision_engine = decision_engine or DecisionPackageEngine(
+            options_engine=self.options_engine,
+            catalyst_provider=self.catalyst_provider,
+            fundamentals_provider=self.fundamentals_provider,
+            critic=self.critic,
+            risk=self.risk,
+        )
 
     def status(self) -> dict:
-        return {
+        return stamp_research_lock({
             "phase": PHASE,
             "mode": self.settings.mode.value,
-            "live_execution_unlocked": LIVE_EXECUTION_UNLOCKED,
             "emergency_stop": self.risk.emergency_stop,
             "market_data_provider": self.market_data.name,
             "broker_provider": self.broker.name,
             "option_chain_provider": type(self.options_engine.chain_provider).__name__,
+            "catalyst_provider": getattr(
+                self.catalyst_provider, "name", type(self.catalyst_provider).__name__
+            ),
+            "fundamentals_provider": getattr(
+                self.fundamentals_provider,
+                "name",
+                type(self.fundamentals_provider).__name__,
+            ),
+            "adversarial_critic": getattr(self.critic, "name", type(self.critic).__name__),
             "webull_configured": self.settings.webull_configured,
             "webull_api_endpoint": self.settings.webull_api_endpoint,
             "risk": {
@@ -64,7 +103,7 @@ class ResearchRuntime:
                 "max_daily_loss_usd": self.risk.max_daily_loss_usd,
                 "max_weekly_loss_usd": self.risk.max_weekly_loss_usd,
             },
-        }
+        }, command="status")
 
     def fetch_bars(self, symbol: str, timespan: str = "D", count: int = 30) -> dict:
         bars = self.market_data.get_history_bars(symbol, timespan=timespan, count=count)
@@ -201,7 +240,7 @@ class ResearchRuntime:
             payload["session_context"]["last_close_vs_snapshot_pct"] = round(
                 (float(last_close) / float(snap_last) - 1.0) * 100.0, 3
             )
-        return payload
+        return stamp_research_lock(payload, command="regime")
 
     def scan_opportunities(
         self,
@@ -220,7 +259,7 @@ class ResearchRuntime:
             max_results=max_results,
             benchmark=benchmark,
         )
-        return scanner.scan().to_dict()
+        return stamp_research_lock(scanner.scan().to_dict(), command="scan")
 
     def analyze_options(
         self,
@@ -244,7 +283,39 @@ class ResearchRuntime:
             benchmark=benchmark,
             universe=symbols,
         )
-        return engine.analyze().to_dict()
+        return stamp_research_lock(engine.analyze().to_dict(), command="options")
+
+    def decide(
+        self,
+        *,
+        benchmark: str = "SPY",
+        lookback: int = 90,
+        min_equity_score: float = 55.0,
+        min_option_score: float = 55.0,
+        max_results: int = 10,
+        symbols: list[str] | None = None,
+    ) -> dict:
+        chain = build_option_chain_provider(self.settings, self.market_data)
+        options_engine = OptionsAnalysisEngine(
+            self.market_data,
+            chain_provider=chain,
+            risk=self.risk,
+            lookback=lookback,
+            min_equity_score=min_equity_score,
+            min_option_score=min_option_score,
+            max_results=max_results,
+            benchmark=benchmark,
+            universe=symbols,
+        )
+        engine = DecisionPackageEngine(
+            options_engine=options_engine,
+            catalyst_provider=self.catalyst_provider,
+            fundamentals_provider=self.fundamentals_provider,
+            critic=self.critic,
+            risk=self.risk,
+            max_packages=max_results,
+        )
+        return stamp_research_lock(engine.build().to_dict(), command="decide")
 
     def _snapshot_last(self, symbol: str) -> float | None:
         try:
