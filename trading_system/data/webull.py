@@ -92,16 +92,16 @@ class WebullMarketDataProvider(MarketDataProvider):
         count: int,
         category: str,
     ) -> list:
-        # real_time_required=Y includes the in-progress daily bar so last_close
-        # tracks the same RTH last as snapshots (official default is Y; set explicitly).
-        # trading_sessions=RTH matches snapshot defaults (extended hours off).
+        # Production api.webull.com rejects count as str and optional session flags
+        # with HTTP 400 "Parameters type miss match". Operator probe: count=int works;
+        # real_time_required="Y" and trading_sessions="RTH" do not. SDK still accepts
+        # those kwargs, but the HTTP query types must stay native (int count, omit extras).
+        # Official defaults already return the latest RTH daily bar.
         res = self._data.market_data.get_history_bar(
             symbol,
             category,
             timespan,
-            count=str(count),
-            real_time_required="Y",
-            trading_sessions="RTH" if timespan == "D" else None,
+            count=int(count),
         )
         payload = require_ok(res, "get_history_bar", endpoint=self._endpoint)
         # Webull returns newest→oldest; bars_from_payload sorts oldest→newest.

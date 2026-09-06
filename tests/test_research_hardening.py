@@ -15,6 +15,7 @@ from trading_system.data.bars import (
     resolve_equity_category,
 )
 from trading_system.data.mock import MockMarketDataProvider
+from trading_system.data.webull import WebullMarketDataProvider
 from trading_system.models import Bar, utc_now
 from trading_system.modes import LIVE_EXECUTION_UNLOCKED
 from trading_system.regime.classifier import classify_regime
@@ -153,6 +154,49 @@ def test_reverse_chronological_bars_use_newest_close():
     report = classify_regime(regime_feats, benchmark="SPY")
     assert report.regime is not MarketRegime.STRONG_BEAR
     assert report.features.last_close == pytest.approx(770.19)
+
+
+def test_history_bar_request_uses_int_count_and_omits_session_kwargs():
+    """Live api.webull.com 400s on count=str / real_time_required / trading_sessions."""
+    calls: list[dict] = []
+
+    class _Md:
+        def get_history_bar(self, symbol, category, timespan, **kwargs):
+            calls.append(
+                {"symbol": symbol, "category": category, "timespan": timespan, **kwargs}
+            )
+            return _FakeResponse(
+                [
+                    {
+                        "time": "2026-09-04T20:00:00.000+0000",
+                        "open": "768",
+                        "high": "772",
+                        "low": "765",
+                        "close": "770.19",
+                        "volume": "10",
+                    },
+                    {
+                        "time": "2026-04-15T20:00:00.000+0000",
+                        "open": "700",
+                        "high": "712",
+                        "low": "698",
+                        "close": "709",
+                        "volume": "8",
+                    },
+                ]
+            )
+
+    provider = WebullMarketDataProvider.__new__(WebullMarketDataProvider)
+    provider._data = SimpleNamespace(market_data=_Md())
+    provider._endpoint = "api.webull.com"
+    bars = provider._history_bars_once("SPY", timespan="D", count=10, category="US_ETF")
+    assert len(calls) == 1
+    assert calls[0]["count"] == 10
+    assert isinstance(calls[0]["count"], int)
+    assert "real_time_required" not in calls[0]
+    assert "trading_sessions" not in calls[0]
+    assert bars[-1].close == pytest.approx(770.19)
+    assert bars[0].close == pytest.approx(709.0)
 
 
 def test_nested_result_envelope_and_newest_first_sorted():

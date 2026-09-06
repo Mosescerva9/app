@@ -32,7 +32,7 @@ Operator report: SPY `regime`/`bars` `last_close` ≈ 709 while production snaps
 **What we verified and fixed:**
 1. **Chronology** — Webull adapter + `ensure_chronological_bars()` before regime/scanner feature extraction. Regression: reverse-chronological input still yields last_close=770.19, not 709. Nested envelopes (`result[{symbol, result:[bars]}]`) are unwrapped.
 2. **Category** — official Data API uses `US_STOCK` vs `US_ETF`. SPY/QQQ/IWM and the default ETF universe resolve as `US_ETF` with a `US_STOCK` fallback.
-3. **Session** — daily history requests `real_time_required=Y` and `trading_sessions=RTH` so they share the snapshot default (extended hours off).
+3. **Request types (live box, `api.webull.com`)** — `GET /openapi/market-data/stock/bars` returns **400 Parameters type miss match** if `count` is a string or if `real_time_required` / `trading_sessions` are sent. Operator probe: `get_history_bar('SPY','US_ETF','D', count=10)` (int, no extras) → 200. The installed SDK *accepts* those optional kwargs, but production query types do not. We pass **integer `count` only** and rely on official defaults for latest RTH daily bars.
 
 **Discarded as primary cause:** sandbox-vs-prod mix can still happen if `WEBULL_API_ENDPOINT` differs between commands, but a ~8% gap is the signature of reading the oldest bar as last close, not a 15-minute delay.
 

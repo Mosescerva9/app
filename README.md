@@ -11,7 +11,7 @@ Read-only market data, regime, opportunity scan, and **long-premium options rese
 | `RESEARCH` / `PAPER` / `LIVE_APPROVAL` modes | Configured; live execution **locked** |
 | Mock market data + mock option chains | ✅ offline / tests |
 | Webull market data (official SDK) | ✅ needs OpenAPI keys + Advanced Quotes |
-| Daily bars aligned with RTH snapshots | ✅ sorted + ETF category + `real_time_required=Y` |
+| Daily bars aligned with RTH snapshots | ✅ sorted + ETF category; live call is `count=int` only (no session kwargs) |
 | Webull option chain adapter | ✅ `get_option_contracts` + option snapshots (or clear entitlement errors) |
 | Mock broker account reads | ✅ |
 | Webull broker read adapter | ✅ same-endpoint account ids; sandbox ≠ prod |

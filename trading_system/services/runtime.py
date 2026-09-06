@@ -75,11 +75,12 @@ class ResearchRuntime:
             "count": len(rows),
             "bars": rows,
             "session_note": (
-                "Daily bars are RTH, chronological (oldest→newest), and request "
-                "real_time_required=Y so the last close is the latest RTH print. "
-                "Snapshot last should agree within the same session; remaining lag is "
-                "the in-progress bar vs last print, delayed-quote entitlement offset, "
-                "or after-hours if snapshots later request extended hours."
+                "Daily bars are requested as symbol/category/timespan/count(int) only "
+                "(production rejects string count and real_time_required/trading_sessions "
+                "with HTTP 400 type mismatch). Official defaults already return the latest "
+                "RTH daily bar. Series is sorted oldest→newest so last_close is the newest "
+                "print. Snapshot last should agree in the same session; remaining lag is "
+                "the in-progress bar vs last print or delayed-quote entitlement offset."
             ),
         }
         if rows:
