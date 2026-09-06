@@ -19,7 +19,7 @@ from trading_system.data.base import MarketDataProvider
 from trading_system.decision import DecisionPackageEngine
 from trading_system.events import CatalystProvider, build_catalyst_provider
 from trading_system.fundamentals import FundamentalsProvider, build_fundamentals_provider
-from trading_system.journal import PaperLedger
+from trading_system.journal import PHASE9_COMPLETE, PaperLedger
 from trading_system.modes import PHASE, assert_mode_allowed
 from trading_system.research_lock import stamp_research_lock
 from trading_system.options import OptionsAnalysisEngine, build_option_chain_provider
@@ -79,7 +79,7 @@ class ResearchRuntime:
             critic=self.critic,
             risk=self.risk,
         )
-        self.paper_ledger = paper_ledger or PaperLedger()
+        self.paper_ledger = paper_ledger or PaperLedger(risk=self.risk)
 
     def status(self) -> dict:
         return stamp_research_lock({
@@ -98,7 +98,9 @@ class ResearchRuntime:
                 type(self.fundamentals_provider).__name__,
             ),
             "adversarial_critic": getattr(self.critic, "name", type(self.critic).__name__),
-            "paper_journal": "stub",
+            "paper_journal": self.paper_ledger.name,
+            "phase9_complete": PHASE9_COMPLETE,
+            "paper_account": self.paper_ledger.account_snapshot().to_dict(),
             "backtester": "regime_filtered_long_premium",
             "webull_configured": self.settings.webull_configured,
             "webull_api_endpoint": self.settings.webull_api_endpoint,
@@ -301,27 +303,15 @@ class ResearchRuntime:
         max_results: int = 10,
         symbols: list[str] | None = None,
     ) -> dict:
-        chain = build_option_chain_provider(self.settings, self.market_data)
-        options_engine = OptionsAnalysisEngine(
-            self.market_data,
-            chain_provider=chain,
-            risk=self.risk,
+        report = self._decision_report(
+            benchmark=benchmark,
             lookback=lookback,
             min_equity_score=min_equity_score,
             min_option_score=min_option_score,
             max_results=max_results,
-            benchmark=benchmark,
-            universe=symbols,
+            symbols=symbols,
         )
-        engine = DecisionPackageEngine(
-            options_engine=options_engine,
-            catalyst_provider=self.catalyst_provider,
-            fundamentals_provider=self.fundamentals_provider,
-            critic=self.critic,
-            risk=self.risk,
-            max_packages=max_results,
-        )
-        return stamp_research_lock(engine.build().to_dict(), command="decide")
+        return stamp_research_lock(report.to_dict(), command="decide")
 
     def backtest(
         self,
@@ -345,11 +335,93 @@ class ResearchRuntime:
         if record_journal:
             self.paper_ledger.record_backtest(report)
         payload = report.to_dict()
+        payload["journal_recorded"] = bool(record_journal)
         payload["journal_stub_recorded"] = bool(record_journal)
         return stamp_research_lock(payload, command="backtest")
 
     def journal(self) -> dict:
         return stamp_research_lock(self.paper_ledger.to_dict(), command="journal")
+
+    def paper_open(
+        self,
+        symbol: str,
+        *,
+        quantity: int = 1,
+        benchmark: str = "SPY",
+        lookback: int = 90,
+        min_equity_score: float = 55.0,
+        min_option_score: float = 55.0,
+    ) -> dict:
+        """Simulate a long-premium open from a Decision Package. Never places a broker order."""
+        report = self._decision_report(
+            benchmark=benchmark,
+            lookback=lookback,
+            min_equity_score=min_equity_score,
+            min_option_score=min_option_score,
+            max_results=10,
+            symbols=[symbol],
+        )
+        package = next(
+            (p for p in report.packages if p.symbol.upper() == symbol.upper()),
+            report.packages[0] if report.packages else None,
+        )
+        result = self.paper_ledger.open_from_package(package, quantity=quantity)
+        payload = result.to_dict()
+        payload["symbol"] = symbol.upper()
+        payload["decision_package"] = None if package is None else package.to_dict()
+        payload["packages_considered"] = len(report.packages)
+        return stamp_research_lock(payload, command="paper-open")
+
+    def paper_close(
+        self,
+        position_id: str,
+        *,
+        exit_mark_usd: float,
+        reason: str = "manual_paper_close",
+    ) -> dict:
+        """Simulate a paper close. Never places a broker order."""
+        result = self.paper_ledger.close_position(
+            position_id,
+            exit_mark_usd=exit_mark_usd,
+            reason=reason,
+        )
+        return stamp_research_lock(result.to_dict(), command="paper-close")
+
+    def paper_note(self, text: str, *, symbol: str = "") -> dict:
+        result = self.paper_ledger.add_note(text, symbol=symbol)
+        return stamp_research_lock(result.to_dict(), command="paper-note")
+
+    def _decision_report(
+        self,
+        *,
+        benchmark: str = "SPY",
+        lookback: int = 90,
+        min_equity_score: float = 55.0,
+        min_option_score: float = 55.0,
+        max_results: int = 10,
+        symbols: list[str] | None = None,
+    ):
+        chain = build_option_chain_provider(self.settings, self.market_data)
+        options_engine = OptionsAnalysisEngine(
+            self.market_data,
+            chain_provider=chain,
+            risk=self.risk,
+            lookback=lookback,
+            min_equity_score=min_equity_score,
+            min_option_score=min_option_score,
+            max_results=max_results,
+            benchmark=benchmark,
+            universe=symbols,
+        )
+        engine = DecisionPackageEngine(
+            options_engine=options_engine,
+            catalyst_provider=self.catalyst_provider,
+            fundamentals_provider=self.fundamentals_provider,
+            critic=self.critic,
+            risk=self.risk,
+            max_packages=max_results,
+        )
+        return engine.build()
 
     def _snapshot_last(self, symbol: str) -> float | None:
         try:

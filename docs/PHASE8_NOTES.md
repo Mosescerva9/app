@@ -62,7 +62,7 @@ Every CLI payload (`status`, `scan`, `options`, `decide`) stamps:
 
 - Analyst targets/ratings (`DataClient.instrument`, not fundamentals.*)
 - Historical option-chain backtests (Phase 7 uses a synthetic long-premium mark)
-- Paper journal + paper ledger (audit Phase 9) — **stub only** as of Phase 7 slice
+- Paper journal + paper ledger (audit Phase 9) — **done in the Phase 9 slice** (simulated; no broker)
 - Dashboard / Grok daily brief (audit Phase 10)
 - Sandbox / live execution (audit Phases 11–12)
 - Live LLM critique (hook exists; no API key required)

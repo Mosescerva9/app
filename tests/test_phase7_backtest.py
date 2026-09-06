@@ -37,10 +37,10 @@ def _settings() -> Settings:
     )
 
 
-def test_phase_still_eight_and_locked():
-    assert PHASE == 8
+def test_phase_nine_and_locked():
+    assert PHASE == 9
     assert LIVE_EXECUTION_UNLOCKED is False
-    assert PHASE9_COMPLETE is False
+    assert PHASE9_COMPLETE is True
 
 
 def test_trend_bars_produce_long_call_trades():
@@ -177,7 +177,8 @@ def test_cli_backtest_and_journal_stub(capsys):
     assert status["research_complete"] is False
     assert status["go_signals_allowed"] is False
     assert status["trade_recommendation"] is False
-    assert status["paper_journal"] == "stub"
+    assert status["paper_journal"] == "paper_ledger"
+    assert status["phase9_complete"] is True
     assert status["backtester"] == "regime_filtered_long_premium"
 
     payload = runtime.backtest("AAPL", count=120, lookback=60, split="oos")
@@ -185,8 +186,9 @@ def test_cli_backtest_and_journal_stub(capsys):
     assert payload["research_complete"] is False
     assert payload["trade_recommendation"] is False
     journal = runtime.journal()
-    assert journal["phase9_complete"] is False
+    assert journal["phase9_complete"] is True
     assert journal["entry_count"] == payload["trade_count"]
+    assert journal["account"]["cash_usd"] == 1500.0
 
     rc = main(["backtest", "AAPL", "--count", "80", "--lookback", "60"])
     assert rc == 0
@@ -206,8 +208,9 @@ def test_paper_ledger_file_roundtrip(tmp_path):
     path = tmp_path / "journal.json"
     PaperLedger(path=path).record_backtest(report)
     reloaded = PaperLedger(path=path)
-    assert reloaded.to_dict()["phase9_complete"] is False
+    assert reloaded.to_dict()["phase9_complete"] is True
     assert reloaded.to_dict()["entry_count"] == len(report.trades)
+    assert reloaded.to_dict()["account"]["cash_usd"] == 1500.0
 
 
 def test_paper_ledger_records_backtest_without_claiming_complete():
@@ -216,6 +219,7 @@ def test_paper_ledger_records_backtest_without_claiming_complete():
     ledger = PaperLedger(path=None)
     ledger.record_backtest(report)
     dumped = ledger.to_dict()
-    assert dumped["phase9_complete"] is False
+    assert dumped["phase9_complete"] is True
     assert dumped["research_complete"] is False
     assert dumped["entry_count"] == len(report.trades)
+    assert dumped["account"]["cash_usd"] == 1500.0
