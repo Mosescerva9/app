@@ -6,8 +6,8 @@ This slice also deepens Phase 8 fundamentals beyond forecast-EPS.
 Branch: `cursor/trading-system-phase7-backtester-56e4`  
 Base: `cursor/trading-system-decision-packages-8955` (PR #8)
 
-`PHASE` stays **8** (Decision Packages remain the latest complete research surface).
-Execution stays locked. `RESEARCH_COMPLETE` stays **false**.
+`PHASE` is now **10** (text report is the latest research surface).
+Execution stays locked. `RESEARCH_COMPLETE` is a research-desk flag; live stays locked.
 
 ### Delivered
 
@@ -53,13 +53,14 @@ Backtest rows remain journal **annotations** and do not debit paper cash.
 
 ### Still deferred / honest limits
 - Historical option chains / IV surface (backtest uses a decaying-extrinsic proxy)
-- Dashboard / Grok brief
+- Visual dashboard (text report shipped in Phase 10)
 - Live LLM critique
-- Sandbox / live execution
+- Sandbox / live execution (post-research; not required for RESEARCH_COMPLETE)
 - Analyst targets (instrument API, not this slice)
 
 ### RESEARCH_COMPLETE
-**False.** Criteria: see [`docs/RESEARCH_COMPLETE.md`](RESEARCH_COMPLETE.md).
+See [`docs/RESEARCH_COMPLETE.md`](RESEARCH_COMPLETE.md). The synthetic mark is an
+honest Phase 7 limit and is **not** a research-complete blocker.
 
 ### Try
 ```bash

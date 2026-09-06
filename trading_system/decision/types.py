@@ -10,7 +10,11 @@ from trading_system.adversarial.types import AdversarialCritique
 from trading_system.events.types import CatalystSnapshot
 from trading_system.fundamentals.types import FundamentalsSnapshot
 from trading_system.options.types import OptionCandidate
-from trading_system.research_lock import research_lock_fields
+from trading_system.research_lock import (
+    is_paper_research_candidate,
+    paper_research_candidate_flags,
+    research_lock_fields,
+)
 from trading_system.scanner.types import Opportunity
 
 
@@ -78,6 +82,7 @@ class DecisionPackage:
             "incomplete_research": self.incomplete_research,
             "missing_required": list(self.missing_required),
             "go_signal": False,
+            "paper_research_candidate": is_paper_research_candidate(self),
             "scores": self.scores.to_dict(),
             "equity_opportunity": self.equity_opportunity.to_dict(),
             "option_candidate": (
@@ -110,5 +115,10 @@ class DecisionReport:
             "go_signal_count": 0,
             "phase": "architecture_8_decision_packages",
         }
-        payload.update(research_lock_fields(command="decide"))
+        payload.update(
+            research_lock_fields(
+                command="decide",
+                paper_research_candidates=paper_research_candidate_flags(self.packages),
+            )
+        )
         return payload

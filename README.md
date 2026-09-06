@@ -1,8 +1,8 @@
 # AI Trading Research System
 
-Read-only market data, regime, opportunity scan, long-premium options research, **Decision Packages** (catalyst + adversarial + official fundamentals), a **Phase 7 backtester**, and a **Phase 9 paper journal** (simulated ledger only). Default account model: **$1,500 equity / ~$150 max risk per trade**.
+Read-only market data, regime, opportunity scan, long-premium options research, **Decision Packages** (catalyst + adversarial + official fundamentals), a **Phase 7 backtester**, a **Phase 9 paper journal** (simulated ledger only), and a **Phase 10 daily/weekly text report**. Default account model: **$1,500 equity / ~$150 max risk per trade**.
 
-**No live or paper order placement.** `LIVE_EXECUTION_UNLOCKED` stays false.
+**No live or paper order placement.** `LIVE_EXECUTION_UNLOCKED` stays false. `RESEARCH_COMPLETE` is a research-desk flag only.
 
 ## What works now
 
@@ -23,8 +23,9 @@ Read-only market data, regime, opportunity scan, long-premium options research, 
 | Decision Packages | ✅ `decide` refuses `candidate`/GO when research is incomplete |
 | Backtester (audit Phase 7) | ✅ cost/slippage-aware synthetic long-premium; OOS or walk-forward; no look-ahead |
 | Paper journal (audit Phase 9) | ✅ simulated ledger + paper-only open/close/note (no broker orders) |
-| RESEARCH_COMPLETE / GO lock | ❌ system `research_complete=false`; all CLI surfaces stamp `trade_recommendation=false` |
-| CLI: `status`, `bars`, `snapshots`, `regime`, `scan`, `options`, `decide`, `backtest`, `journal`, `paper-open`, `paper-close`, `paper-note`, `account` | ✅ |
+| Daily/weekly text report (audit Phase 10) | ✅ `report` / `report --weekly` for Grok oversight (no UI) |
+| RESEARCH_COMPLETE / GO lock | ✅ research-desk `research_complete=true`; `trade_recommendation` / `go_signals_allowed` only for paper/research candidates; `go_signal` (broker GO) stays false |
+| CLI: `status`, `bars`, `snapshots`, `regime`, `scan`, `options`, `decide`, `backtest`, `journal`, `paper-open`, `paper-close`, `paper-note`, `report`, `account` | ✅ |
 | Order placement | ❌ intentionally disabled |
 
 Architecture audit: [`docs/ARCHITECTURE_AUDIT.md`](docs/ARCHITECTURE_AUDIT.md)  
@@ -32,6 +33,7 @@ Backtester: [`docs/PHASE7_NOTES.md`](docs/PHASE7_NOTES.md)
 Options / hardening notes: [`docs/PHASE5_NOTES.md`](docs/PHASE5_NOTES.md)  
 Decision Packages: [`docs/PHASE8_NOTES.md`](docs/PHASE8_NOTES.md)  
 Paper journal: [`docs/PHASE9_NOTES.md`](docs/PHASE9_NOTES.md)  
+Text report: [`docs/PHASE10_NOTES.md`](docs/PHASE10_NOTES.md)  
 RESEARCH_COMPLETE checklist: [`docs/RESEARCH_COMPLETE.md`](docs/RESEARCH_COMPLETE.md)
 
 ## Quick start (offline / mock)
@@ -53,6 +55,7 @@ python -m trading_system backtest SPY --count 180 --split oos
 python -m trading_system journal
 python -m trading_system paper-open AAPL
 python -m trading_system paper-note "stood aside — incomplete mock catalyst"
+python -m trading_system report --symbols AAPL SPY
 python -m trading_system account
 pytest -q
 ```
@@ -111,8 +114,8 @@ Numbering follows [`docs/ARCHITECTURE_AUDIT.md`](docs/ARCHITECTURE_AUDIT.md). Lo
 5. Quantitative scoring (in scanner) ✅
 6. Options engine + research hardening ✅
 7. Backtester ✅ minimal (regime-filtered long-premium, costs/slippage, OOS/walk-forward; synthetic option mark)
-8. Adversarial + Decision Packages ✅ (rule-based critic, official earnings/filings/statements; **not RESEARCH_COMPLETE**)
+8. Adversarial + Decision Packages ✅ (rule-based critic, official earnings/filings/statements)
 9. Paper trading ledger — ✅ simulated RESEARCH loop (no Webull orders)
-10. Dashboard + Grok daily brief — **deferred**
-11. Sandbox execution (still gated)
+10. Daily/weekly text report — ✅ `python -m trading_system report [--weekly]` (dashboard UI still optional)
+11. Sandbox execution (still gated; **not** required for RESEARCH_COMPLETE)
 12. `LIVE_APPROVAL` only after your explicit go-ahead
