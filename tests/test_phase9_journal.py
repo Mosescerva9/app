@@ -298,7 +298,7 @@ def test_close_realizes_pnl_without_negative_cash():
 def test_close_winner_returns_premium_to_cash():
     ledger = PaperLedger(path=None, risk=_limits())
     opened = ledger.open_from_package(_openable_package(mid=1.00))
-    closed = ledger.close_position(opened.position_id, exit_mark_usd=1.80)
+    closed = ledger.close_position(opened.position_id, exit_mark_usd=180.0)
     assert closed.accepted is True
     snap = ledger.account_snapshot()
     assert snap.cash_usd == 1580.0
@@ -338,7 +338,7 @@ def test_max_simultaneous_positions_cap():
 def test_daily_loss_cap_blocks_new_opens():
     ledger = PaperLedger(path=None, risk=_limits())
     opened = ledger.open_from_package(_openable_package(mid=1.20))
-    ledger.close_position(opened.position_id, exit_mark_usd=0.40)  # -80 vs $75 daily cap
+    ledger.close_position(opened.position_id, exit_mark_usd=40.0)  # -80 vs $75 daily cap
     blocked = ledger.open_from_package(_openable_package(symbol="MSFT", mid=1.00))
     assert blocked.accepted is False
     assert blocked.reason == "daily_loss_cap"
@@ -351,7 +351,7 @@ def test_weekly_loss_cap_blocks_new_opens():
     opened = ledger.open_from_package(_openable_package(mid=1.20), now=AS_OF - timedelta(days=3))
     # Close earlier in the ISO week so the daily window is clean; weekly still includes it.
     earlier = AS_OF - timedelta(days=3)
-    ledger.close_position(opened.position_id, exit_mark_usd=0.40, now=earlier)
+    ledger.close_position(opened.position_id, exit_mark_usd=40.0, now=earlier)
     blocked = ledger.open_from_package(_openable_package(symbol="MSFT", mid=1.00), now=AS_OF)
     assert blocked.accepted is False
     assert blocked.reason == "weekly_loss_cap"

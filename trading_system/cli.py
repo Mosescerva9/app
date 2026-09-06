@@ -130,7 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--exit-mark",
         type=float,
         required=True,
-        help="Exit premium USD per contract (long-premium mark, not a live quote requirement)",
+        help="Exit cash premium USD per contract (same units as max_loss_usd / mid×100)",
     )
     paper_close.add_argument("--reason", default="manual_paper_close")
 
