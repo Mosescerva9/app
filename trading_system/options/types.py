@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any
@@ -154,3 +155,33 @@ def occ_symbol(underlying: str, expiration: date, right: str, strike: float) -> 
     r = "C" if right.upper().startswith("C") else "P"
     strike_int = int(round(strike * 1000))
     return f"{underlying.upper()}{yy}{r}{strike_int:08d}"
+
+
+# Standard OCC: ROOT + YYMMDD + C|P + 8-digit strike*1000. Webull contract
+# listings sometimes prefix a vendor digit (e.g. 2NVDA261016C00210000).
+_OCC_BODY = re.compile(r"^([A-Z]{1,6})(\d{6})([CP])(\d{8})$")
+
+
+def normalize_occ_option_symbol(
+    raw: str,
+    *,
+    underlying: str = "",
+    expiration: date | None = None,
+    right: str = "",
+    strike: float | None = None,
+) -> str:
+    """Return a snapshot-safe OCC symbol.
+
+    Strip a leading vendor prefix such as ``2`` before the root
+    (``2NVDA261016C00210000`` → ``NVDA261016C00210000``). If the raw value
+    is not OCC-shaped, reconstruct from strike/expiry/right when known.
+    """
+    text = str(raw or "").strip().upper().replace(" ", "").replace("-", "")
+    if _OCC_BODY.match(text):
+        return text
+    stripped = text.lstrip("0123456789")
+    if _OCC_BODY.match(stripped):
+        return stripped
+    if underlying and expiration is not None and right and strike is not None and strike > 0:
+        return occ_symbol(underlying, expiration, right, strike)
+    return stripped or text

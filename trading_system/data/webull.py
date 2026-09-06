@@ -152,7 +152,9 @@ class WebullMarketDataProvider(MarketDataProvider):
         *,
         category: str = "US_OPTION",
     ) -> list[QuoteSnapshot]:
-        symbols = [s.upper() for s in option_symbols]
+        from trading_system.options.types import normalize_occ_option_symbol
+
+        symbols = [normalize_occ_option_symbol(s) for s in option_symbols]
         if not symbols:
             return []
         out: list[QuoteSnapshot] = []

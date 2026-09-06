@@ -12,6 +12,8 @@ Base: `cursor/trading-system-phase5-options-e1ab`
 - **`WebullOptionChainProvider`** when `MARKET_DATA_PROVIDER=webull`
   - Official `DataClient.instrument.get_option_contracts` (`GET /openapi/instrument/option/contracts`)
   - Official `option_market_data.get_option_snapshot` (max 20 symbols; US options)
+  - OCC symbols normalized before snapshot: Webull listings can prefix a vendor
+    digit (`2NVDA261016C00210000` → `NVDA261016C00210000`); otherwise 417 INVALID_SYMBOL
   - Clear entitlement / `chain_error` notes when OPRA / Advanced Quotes is missing
 - Hard filters for ~$1,500 account / **~$150 max premium×100** (`ACCOUNT_EQUITY_USD=1500`, `MAX_RISK_PER_TRADE_PCT=0.10`)
   - DTE 30–60
