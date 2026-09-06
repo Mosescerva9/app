@@ -57,8 +57,8 @@ class RuleBasedAdversarialCritic(AdversarialCritic):
                 why.append("SHORT equity bias must be a long put.")
 
         if opp.direction is Direction.NONE:
-            rejects.append("no_direction")
-            why.append("Scanner has no directional bias.")
+            stand_aside = True
+            why.append("Scanner has no directional bias — stand aside.")
 
         if not opp.invalidation and (opp.stop is None):
             rejects.append("missing_stop_or_invalidation")

@@ -457,6 +457,17 @@ def test_runtime_decide_and_cli_emit_packages(capsys):
     assert "catalyst" in printed
 
 
+def test_empty_options_report_still_emits_packages():
+    engine = _engine()
+    report = engine.build(options_report=_report(), as_of=AS_OF)
+    assert report.packages
+    pkg = report.packages[0].to_dict()
+    assert REQUIRED_PACKAGE_KEYS <= set(pkg)
+    assert REQUIRED_ADVERSARIAL_KEYS <= set(pkg["adversarial"])
+    assert pkg["catalyst"]["available"] is False
+    assert pkg["recommendation"] in {"stand_aside", "reject", "watch", "candidate"}
+
+
 def test_decision_package_dataclass_roundtrip_keys():
     engine = _engine()
     pkg = engine.build(options_report=_report(_candidate()), as_of=AS_OF).packages[0]

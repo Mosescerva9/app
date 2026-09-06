@@ -17,7 +17,7 @@ from trading_system.events.mock import MockCatalystProvider
 from trading_system.options.engine import OptionsAnalysisEngine
 from trading_system.options.types import OptionCandidate, OptionsAnalysisReport
 from trading_system.risk.limits import RiskLimits
-from trading_system.scanner.types import Opportunity, ScanReport
+from trading_system.scanner.types import Direction, Opportunity, ScanReport, ScoreBreakdown, SetupType
 
 
 class DecisionPackageEngine:
@@ -91,7 +91,20 @@ class DecisionPackageEngine:
                 )
 
         if not packages:
-            notes.append("No Decision Packages: empty options set and no equity fallback.")
+            for symbol in self._universe_symbols()[: self.max_packages]:
+                if symbol in seen:
+                    continue
+                packages.append(
+                    self._package_from_equity(self._stand_aside_opportunity(symbol), as_of=now)
+                )
+            if packages:
+                notes.append(
+                    "No ranked opportunities or option contracts; emitted stand-aside "
+                    "Decision Packages for the requested universe so the catalyst + "
+                    "adversarial sections remain auditable."
+                )
+            else:
+                notes.append("No Decision Packages: empty options set and no universe fallback.")
 
         summary = {
             "equity_candidates_considered": report.equity_candidates_considered,
@@ -117,6 +130,52 @@ class DecisionPackageEngine:
             opportunity=candidate.equity_opportunity,
             option=candidate,
             as_of=as_of,
+        )
+
+    def _universe_symbols(self) -> list[str]:
+        raw = getattr(self.options_engine, "universe", None)
+        if raw:
+            return [str(s).upper() for s in raw]
+        scanner = getattr(self.options_engine, "scanner", None)
+        if scanner is not None and getattr(scanner, "universe", None):
+            return [str(s).upper() for s in scanner.universe]
+        return []
+
+    def _stand_aside_opportunity(self, symbol: str) -> Opportunity:
+        return Opportunity(
+            symbol=symbol,
+            direction=Direction.NONE,
+            setup=SetupType.STAND_ASIDE,
+            scores=ScoreBreakdown(
+                technical=None,
+                momentum=None,
+                liquidity=None,
+                regime_fit=None,
+                risk_reward=None,
+                crowding_risk=None,
+                overall=0.0,
+                missing_dimensions=(
+                    "technical",
+                    "momentum",
+                    "liquidity",
+                    "regime_fit",
+                    "risk_reward",
+                    "crowding",
+                    "options_quality",
+                    "catalyst",
+                    "fundamental",
+                ),
+            ),
+            entry=None,
+            stop=None,
+            target=None,
+            risk_reward=None,
+            regime="unknown",
+            regime_confidence=0.0,
+            why=["No directional setup from the Phase 4 scanner."],
+            do_not_trade_if=["no setup", "catalyst unknown"],
+            invalidation=["stand aside"],
+            decision="REJECT",
         )
 
     def _package_from_equity(
