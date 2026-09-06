@@ -17,7 +17,7 @@ Branch: `cursor/trading-system-phase4-scanner-e1ab`
 
 ### Still locked
 - Live order placement
-- Multi-leg options / backtester (later phases)
+- Multi-leg options / live execution (later phases). Phase 7 backtester is a separate CLI.
 
 ### Try
 ```bash

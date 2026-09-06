@@ -1,6 +1,6 @@
 # Architecture Audit — AI Trading Research & Execution System
 
-**Status:** Phase 1–6 research path + **Phase 8 Decision Packages** (catalyst + rule-based adversarial). Phase 7 backtester and Phases 9–12 paper/live are still deferred. No live order placement.  
+**Status:** Phase 1–6 research path + **Phase 8 Decision Packages** + **Phase 7 minimal backtester** (cost/slippage, OOS/walk-forward, synthetic long-premium). Phase 9 paper journal is a stub. Phases 10–12 dashboard/live remain deferred. No live order placement. `RESEARCH_COMPLETE` is false.  
 **Date:** 2026-09-06  
 **Capital assumption:** ~$1,000 (Phase 1). Later research phases use **$1,500 / 10% → $150 per trade**.  
 **Default mode:** `RESEARCH` → then `PAPER` → only later `LIVE_APPROVAL`
@@ -177,9 +177,9 @@ USER APPROVAL  →  Webull order (sandbox/paper first)
 | **4** | Opportunity Scanner (liquid large-caps/ETFs) | Ranked candidates with audit trail |
 | **5** | Quantitative scoring (weighted, documented) | Scores reproducible from same inputs |
 | **6** | Options engine (30–60 DTE, liquidity filters) | Contract selection report with Greeks/IV/spread checks |
-| **7** | Backtester (costs, slippage, OOS, walk-forward) | At least 1–2 setups validated without look-ahead — **deferred** |
+| **7** | Backtester (costs, slippage, OOS, walk-forward) | At least 1–2 setups validated without look-ahead — **partial: one regime-filtered long-premium setup with synthetic option mark; not historical OPRA** |
 | **8** | Adversarial AI + decision packages | Every proposal has counter-thesis + reject rules — **partial: rule-based packages + official earnings/filings + minimal forecast-EPS; `decide` refuses `candidate` when required dimensions are missing; LLM overlay is a no-op hook** |
-| **9** | Paper trading mode + journal | Full loop without broker risk — **deferred** |
+| **9** | Paper trading mode + journal | Full loop without broker risk — **stub ledger only** |
 | **10** | Dashboard + alerts + daily/weekly reports | You can operate visually + via Grok chat |
 | **11** | Webull execution adapter (sandbox) | Preview/place/cancel in sandbox only |
 | **12** | `LIVE_APPROVAL` behind explicit command + kill switch | **Requires your written confirmation** |
@@ -309,8 +309,9 @@ Grok is the **oversight + conversation layer**, not the unsupervised execution b
 
 ## Next action
 
-Phase 8 research slice is implemented: `python -m trading_system decide` emits Decision Packages
-(technical + options + catalyst + fundamentals + adversarial). **`RESEARCH_COMPLETE` is false.**
-CLI `scan`/`options`/`decide` stamp `trade_recommendation=false` and never emit a GO when
-required dimensions are missing. Live execution remains locked until section **L**
-item 5 and a later explicit unlock. Phase 7 backtester and Phases 9–12 are still deferred.
+Phase 8 Decision Packages remain the operator surface (`decide`). Phase 7 adds
+`python -m trading_system backtest` (no look-ahead, costs/slippage, OOS or
+walk-forward) and official statement/ratio fundamentals when the SDK returns
+them. **`RESEARCH_COMPLETE` is false** (paper journal is a stub; no dashboard;
+execution locked). CLI stamps `trade_recommendation=false` / `go_signals_allowed=false`.
+Live execution remains locked until section **L** item 5 and a later explicit unlock.

@@ -304,8 +304,15 @@ class DecisionPackageEngine:
             )
         if not fundamentals.available:
             notes.append(
-                "Fundamentals missing: official forecast-EPS unavailable; "
+                "Fundamentals missing: official forecast-EPS / statements unavailable; "
                 "not inventing statements or ratios."
+            )
+        elif getattr(fundamentals, "statements_status", "unavailable") in {
+            "present",
+            "partial",
+        }:
+            notes.append(
+                f"Official statements/indicators status={fundamentals.statements_status}."
             )
 
         return DecisionPackage(
@@ -337,11 +344,20 @@ def _dimension_ok(available: bool, status: str) -> bool:
     return available and status not in {"unavailable", "unknown"}
 
 
+def _fundamentals_dimension_ok(fundamentals) -> bool:
+    if not fundamentals.available:
+        return False
+    if fundamentals.beat_miss not in {"unavailable", "unknown"}:
+        return True
+    status = getattr(fundamentals, "statements_status", "unavailable")
+    return status in {"present", "partial", "not_applicable"}
+
+
 def _missing_required(catalyst, fundamentals, option) -> tuple[str, ...]:
     missing: list[str] = []
     if not _dimension_ok(catalyst.available, catalyst.earnings_status):
         missing.append("catalyst")
-    if not _dimension_ok(fundamentals.available, fundamentals.beat_miss):
+    if not _fundamentals_dimension_ok(fundamentals):
         missing.append("fundamentals")
     if option is None:
         missing.append("options")

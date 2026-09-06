@@ -11,7 +11,7 @@ This repo’s earlier local numbering used Phase 5 for options (audit Phase 6).
 - Auditable **Decision Package** JSON from `python -m trading_system decide`
   - Existing technical / regime / options scores
   - **Catalyst** section (earnings proximity + simple filing flags)
-  - **Fundamentals** section (official forecast-EPS only; mock = unavailable)
+  - **Fundamentals** section (official forecast-EPS; Phase 7+ also statements/indicators/industry when the SDK returns them; mock = unavailable)
   - **Adversarial** section: `why_trade_fails`, `instant_reject_conditions`,
     `better_strike_dte_or_stand_aside`, `confidence_penalty`
   - `incomplete_research` / `missing_required` — no `candidate` until required dims exist
@@ -44,7 +44,7 @@ A **package** may set `incomplete_research=false` only when **all** of these are
 | Regime + equity scores | Phase 3–4 |
 | Long-premium option (or explicit none → incomplete) | Phase 5 |
 | Catalyst (official earnings date or ETF `not_applicable`) | Phase 8 |
-| Fundamentals (official forecast-EPS or ETF `not_applicable`) | Phase 8 minimal |
+| Fundamentals (official forecast-EPS **or** official statements/indicators, or ETF `not_applicable`) | Phase 8 + Phase 7 deepen |
 | Adversarial critique (no instant reject / stand-aside) | Phase 8 rules |
 
 `decide` **will not emit `recommendation=candidate`** when any required dimension is missing or unavailable (`stand_aside` + `incomplete_research=true`).
@@ -60,9 +60,9 @@ Every CLI payload (`status`, `scan`, `options`, `decide`) stamps:
 
 **System-level `RESEARCH_COMPLETE` is false** until the deferred items below exist. A package with all required dimensions is still not a live trade recommendation.
 
-- Full fundamentals (statements, industry comps, analyst targets beyond last EPS)
-- Backtester / walk-forward / OOS (audit Phase 7)
-- Paper journal + paper ledger (audit Phase 9)
+- Analyst targets/ratings (`DataClient.instrument`, not fundamentals.*)
+- Historical option-chain backtests (Phase 7 uses a synthetic long-premium mark)
+- Paper journal + paper ledger (audit Phase 9) — **stub only** as of Phase 7 slice
 - Dashboard / Grok daily brief (audit Phase 10)
 - Sandbox / live execution (audit Phases 11–12)
 - Live LLM critique (hook exists; no API key required)
