@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from statistics import mean, pstdev
 
+from trading_system.data.bars import ensure_chronological_bars
 from trading_system.models import Bar
 from trading_system.regime.types import RegimeFeatures
 
@@ -38,6 +39,7 @@ def compute_features(
     fast: int = 20,
     slow: int = 50,
 ) -> RegimeFeatures:
+    bars = ensure_chronological_bars(bars)
     if len(bars) < 25:
         raise ValueError(f"Need at least 25 bars for regime features; got {len(bars)}")
 

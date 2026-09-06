@@ -106,7 +106,20 @@ class WebullOptionChainProvider(OptionChainProvider):
             logger.info("No listed option contracts in DTE window for %s", symbol)
             return []
 
-        snaps = self._snapshot_map([c.symbol for c in specs])
+        symbols = [c.symbol for c in specs]
+        try:
+            snaps = self._snapshot_map(symbols)
+        except WebullApiError as exc:
+            sample = ", ".join(symbols[:5])
+            raise WebullApiError(
+                f"Listed {len(specs)} OCC contracts for {symbol} via get_option_contracts "
+                f"(e.g. {sample}) but quotes/greeks failed: {exc}",
+                action="get_option_snapshot",
+                status=exc.status,
+                error_code=exc.error_code or "MARKET_DATA_NOT_SUBSCRIBED",
+                endpoint=self._endpoint,
+                body=exc.body,
+            ) from exc
         out: list[OptionContract] = []
         for spec in specs:
             snap = snaps.get(spec.symbol) or {}

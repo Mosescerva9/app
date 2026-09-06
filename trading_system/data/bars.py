@@ -58,8 +58,30 @@ def bars_from_payload(
         for row in extract_bar_rows(payload)
     ]
     bars = [b for b in bars if b.close > 0 or b.open > 0]
-    bars.sort(key=lambda b: b.timestamp)
-    return bars
+    return ensure_chronological_bars(bars)
+
+
+def ensure_chronological_bars(bars: list[Bar]) -> list[Bar]:
+    """Oldest → newest.
+
+    Official Webull ``get_history_bar`` returns newest → oldest. Regime and
+    scanner features treat ``closes[-1]`` as the latest print, so an unsorted
+    series makes last_close the *oldest* bar (SPY ~709 vs live ~770).
+    """
+    if len(bars) < 2:
+        return list(bars)
+    newer = older = 0
+    for a, b in zip(bars, bars[1:]):
+        if a.timestamp > b.timestamp:
+            newer += 1
+        elif a.timestamp < b.timestamp:
+            older += 1
+    if newer > older:
+        return list(reversed(bars))
+    if older > newer:
+        return list(bars)
+    # Equal / missing timestamps: still sort (stable) so callers get a copy.
+    return sorted(bars, key=lambda b: b.timestamp)
 
 
 def _collect_bar_rows(payload: Any, out: list[dict[str, Any]]) -> None:

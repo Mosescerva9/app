@@ -53,6 +53,24 @@ def is_sandbox_endpoint(endpoint: str) -> bool:
     return "sandbox" in host or host.startswith("api.sandbox.")
 
 
+def option_market_data_hint() -> str:
+    """Operator-facing guidance for 403 MARKET_DATA_NOT_SUBSCRIBED on US_OPTION."""
+    return (
+        "get_option_contracts can list live OCC symbols without quotes. "
+        "get_option_snapshot (bid/ask/IV/greeks) requires an OpenAPI US_OPTION "
+        "(OPRA) subscription on this app key — app/desktop quotes do not count. "
+        "Subscribe under OpenAPI Advanced Quotes → US_OPTION, then retry. "
+        "Tests/offline keep using MockOptionChainProvider."
+    )
+
+
+def _is_option_market_data_error(code: str | None, detail: str, status: int | None) -> bool:
+    blob = f"{code or ''} {detail}".upper()
+    if "MARKET_DATA_NOT_SUBSCRIBED" in blob or "US_OPTION" in blob and "SUBSCRIBE" in blob:
+        return True
+    return bool(status == 403 and ("OPTION" in blob or "MARKET_DATA" in blob))
+
+
 def account_access_hint(*, endpoint: str | None, account_id: str | None = None) -> str:
     """Operator-facing guidance for ACCOUNT_ACCESS_DENIED / missing account id."""
     env = "sandbox" if is_sandbox_endpoint(endpoint or "") else "production"
@@ -112,6 +130,8 @@ def require_ok(res: Any, action: str, *, endpoint: str | None = None) -> Any:
         text = f"Webull {action} failed ({status_part}{code_part}): {detail}".strip()
         if code and "ACCESS_DENIED" in code.upper():
             text = f"{text} {account_access_hint(endpoint=endpoint)}"
+        if _is_option_market_data_error(code, detail, status):
+            text = f"{text} {option_market_data_hint()}"
         raise WebullApiError(
             text,
             action=action,

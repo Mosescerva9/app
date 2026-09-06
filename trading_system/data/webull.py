@@ -104,6 +104,7 @@ class WebullMarketDataProvider(MarketDataProvider):
             trading_sessions="RTH" if timespan == "D" else None,
         )
         payload = require_ok(res, "get_history_bar", endpoint=self._endpoint)
+        # Webull returns newest→oldest; bars_from_payload sorts oldest→newest.
         return bars_from_payload(payload, symbol=symbol, timespan=timespan)
 
     def get_snapshots(

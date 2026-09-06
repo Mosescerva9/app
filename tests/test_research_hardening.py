@@ -7,9 +7,20 @@ from types import SimpleNamespace
 
 import pytest
 
-from trading_system.data.bars import bars_from_payload, categories_to_try, extract_bar_rows, resolve_equity_category
+from trading_system.data.bars import (
+    bars_from_payload,
+    categories_to_try,
+    ensure_chronological_bars,
+    extract_bar_rows,
+    resolve_equity_category,
+)
 from trading_system.data.mock import MockMarketDataProvider
+from trading_system.models import Bar, utc_now
 from trading_system.modes import LIVE_EXECUTION_UNLOCKED
+from trading_system.regime.classifier import classify_regime
+from trading_system.regime.features import compute_features
+from trading_system.regime.types import MarketRegime
+from trading_system.scanner.features import extract_symbol_features
 from trading_system.options.filters import filter_contract
 from trading_system.options.types import OptionContract, occ_symbol
 from trading_system.options.webull_chain import WebullOptionChainProvider, _merge_contract, _normalize_contract_spec
@@ -77,6 +88,73 @@ def test_premium_one_fifty_fits_new_budget_not_old_forty():
     assert filter_contract(contract, side_bias="LONG", limits=_limits()).ok is True
 
 
+def _spy_webull_newest_first(*, n: int = 90, newest: float = 770.19, oldest: float = 709.0) -> list[Bar]:
+    """Operator-shaped series: Webull get_history_bar order (newest → oldest)."""
+    now = utc_now()
+    step = (newest - oldest) / max(n - 1, 1)
+    chrono: list[Bar] = []
+    for i in range(n):
+        close = oldest + i * step
+        open_px = close - 0.4
+        chrono.append(
+            Bar(
+                symbol="SPY",
+                timestamp=now - timedelta(days=n - 1 - i),
+                open=open_px,
+                high=close + 0.6,
+                low=close - 0.8,
+                close=round(close, 2) if i not in {0, n - 1} else close,
+                volume=1_000_000 + i,
+                timespan="D",
+            )
+        )
+    chrono[0] = Bar(
+        symbol="SPY",
+        timestamp=chrono[0].timestamp,
+        open=oldest - 0.4,
+        high=oldest + 0.6,
+        low=oldest - 0.8,
+        close=oldest,
+        volume=1_000_000,
+        timespan="D",
+    )
+    chrono[-1] = Bar(
+        symbol="SPY",
+        timestamp=chrono[-1].timestamp,
+        open=newest - 0.4,
+        high=newest + 0.6,
+        low=newest - 0.8,
+        close=newest,
+        volume=1_000_000 + n,
+        timespan="D",
+    )
+    newest_first = list(reversed(chrono))
+    assert newest_first[0].close == newest
+    assert newest_first[-1].close == oldest
+    return newest_first
+
+
+def test_reverse_chronological_bars_use_newest_close():
+    """Regression: newest→oldest input must still yield last_close=770.19, not 709."""
+    raw = _spy_webull_newest_first()
+    assert raw[0].close == pytest.approx(770.19)
+    assert raw[-1].close == pytest.approx(709.0)
+
+    ordered = ensure_chronological_bars(raw)
+    assert ordered[-1].close == pytest.approx(770.19)
+    assert ordered[0].close == pytest.approx(709.0)
+    assert ordered[0].timestamp < ordered[-1].timestamp
+
+    regime_feats = compute_features(raw, symbol="SPY")
+    assert regime_feats.last_close == pytest.approx(770.19)
+    scan_feats = extract_symbol_features(raw, symbol="SPY")
+    assert scan_feats.last == pytest.approx(770.19)
+
+    report = classify_regime(regime_feats, benchmark="SPY")
+    assert report.regime is not MarketRegime.STRONG_BEAR
+    assert report.features.last_close == pytest.approx(770.19)
+
+
 def test_nested_result_envelope_and_newest_first_sorted():
     # Official batch/single envelope: result[{symbol, result:[bars newest-first]}]
     newest = {"time": "2026-09-04T20:00:00.000+0000", "open": "768", "high": "772", "low": "765", "close": "770", "volume": "10"}
@@ -111,6 +189,51 @@ def test_etf_category_resolution():
     assert resolve_equity_category("SPY", "US_FUTURES") == "US_FUTURES"
     assert categories_to_try("SPY")[0] == "US_ETF"
     assert "US_STOCK" in categories_to_try("SPY")
+
+
+def test_require_ok_surfaces_us_option_entitlement():
+    res = _FakeResponse(
+        {"error_code": "MARKET_DATA_NOT_SUBSCRIBED", "message": "subscribe to US_OPTION"},
+        status_code=403,
+    )
+    with pytest.raises(WebullApiError, match="MARKET_DATA_NOT_SUBSCRIBED") as exc:
+        require_ok(res, "get_option_snapshot", endpoint="api.webull.com")
+    assert "US_OPTION" in str(exc.value)
+    assert "get_option_contracts" in str(exc.value)
+
+
+def test_webull_chain_surfaces_snapshot_403_after_listing_contracts():
+    class _Instrument:
+        def get_option_contracts(self, **kwargs):
+            return _FakeResponse(
+                [
+                    {
+                        "symbol": "SPY260918C00770000",
+                        "option_type": "CALL",
+                        "strike_price": "770",
+                        "expire_date": "2026-10-16",
+                        "instrument_id": "1",
+                    }
+                ]
+            )
+
+    class _OptionMd:
+        def get_option_snapshot(self, symbols, category):
+            return _FakeResponse(
+                {"error_code": "MARKET_DATA_NOT_SUBSCRIBED", "message": "subscribe to US_OPTION"},
+                status_code=403,
+            )
+
+    provider = WebullOptionChainProvider(
+        data_client=SimpleNamespace(instrument=_Instrument(), option_market_data=_OptionMd()),
+        min_dte=30,
+        max_dte=60,
+    )
+    with pytest.raises(WebullApiError, match="MARKET_DATA_NOT_SUBSCRIBED") as exc:
+        provider.get_chain("SPY", as_of=datetime(2026, 9, 6, tzinfo=timezone.utc), spot=770.19)
+    assert "SPY260918C00770000" in str(exc.value)
+    assert "Listed 1 OCC contracts" in str(exc.value)
+    assert "US_OPTION" in str(exc.value)
 
 
 def test_require_ok_surfaces_access_denied():

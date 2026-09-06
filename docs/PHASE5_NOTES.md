@@ -27,8 +27,10 @@ Base: `cursor/trading-system-phase5-options-e1ab`
 ### Bar history vs live snapshots
 Operator report: SPY `regime`/`bars` `last_close` ≈ 709 while production snapshots ≈ 770.
 
-**What we verified and fixed (no live keys in CI):**
-1. **Payload unwrap** — official history envelopes nest `result[{symbol, result:[bars]}]` (and sometimes `bars`). The old parser treated the outer envelope as a bar, or kept newest-first order so `closes[-1]` was the *oldest* print (~90 sessions back). Bars are now extracted recursively and **sorted oldest→newest**. `last_close` is always the newest bar.
+**Operator-confirmed (box):** `get_history_bar` is newest→oldest. Unsorted `closes[-1]` was SPY ~709 (oldest) vs snapshot/newest ~770.19 → false STRONG_BEAR. After oldest→newest, last_close=770.19 and regime is CHOPPY ~0.8.
+
+**What we verified and fixed:**
+1. **Chronology** — Webull adapter + `ensure_chronological_bars()` before regime/scanner feature extraction. Regression: reverse-chronological input still yields last_close=770.19, not 709. Nested envelopes (`result[{symbol, result:[bars]}]`) are unwrapped.
 2. **Category** — official Data API uses `US_STOCK` vs `US_ETF`. SPY/QQQ/IWM and the default ETF universe resolve as `US_ETF` with a `US_STOCK` fallback.
 3. **Session** — daily history requests `real_time_required=Y` and `trading_sessions=RTH` so they share the snapshot default (extended hours off).
 
