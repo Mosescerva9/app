@@ -157,9 +157,21 @@ def occ_symbol(underlying: str, expiration: date, right: str, strike: float) -> 
     return f"{underlying.upper()}{yy}{r}{strike_int:08d}"
 
 
-# Standard OCC: ROOT + YYMMDD + C|P + 8-digit strike*1000. Webull contract
-# listings sometimes prefix a vendor digit (e.g. 2NVDA261016C00210000).
-_OCC_BODY = re.compile(r"^([A-Z]{1,6})(\d{6})([CP])(\d{8})$")
+# Standard OCC only: ROOT + YYMMDD + C|P + 8-digit strike*1000.
+# Adjusted Webull series that start with a digit (2NVDA261016C00210000) are
+# real contracts but get_option_snapshot rejects them (417 INVALID_SYMBOL).
+_STANDARD_OCC = re.compile(r"^[A-Z]{1,6}\d{6}[CP]\d{8}$")
+
+
+def is_standard_occ_option_symbol(raw: str, *, underlying: str = "") -> bool:
+    """True when ``raw`` is snapshot-safe OCC for an optional underlying root."""
+    text = str(raw or "").strip().upper().replace(" ", "")
+    if not _STANDARD_OCC.match(text):
+        return False
+    if not underlying:
+        return True
+    root = underlying.strip().upper()
+    return text.startswith(root) and bool(re.match(rf"^{re.escape(root)}\d{{6}}[CP]\d{{8}}$", text))
 
 
 def normalize_occ_option_symbol(
@@ -170,18 +182,18 @@ def normalize_occ_option_symbol(
     right: str = "",
     strike: float | None = None,
 ) -> str:
-    """Return a snapshot-safe OCC symbol.
+    """Return a snapshot-safe OCC symbol, or ``""`` to skip the contract.
 
-    Strip a leading vendor prefix such as ``2`` before the root
-    (``2NVDA261016C00210000`` → ``NVDA261016C00210000``). If the raw value
-    is not OCC-shaped, reconstruct from strike/expiry/right when known.
+    Do **not** strip a leading digit from adjusted series (``2NVDA…``) and
+    pretend it is standard OCC — skip those for RESEARCH snapshots.
     """
-    text = str(raw or "").strip().upper().replace(" ", "").replace("-", "")
-    if _OCC_BODY.match(text):
+    text = str(raw or "").strip().upper().replace(" ", "")
+    if is_standard_occ_option_symbol(text, underlying=underlying):
         return text
-    stripped = text.lstrip("0123456789")
-    if _OCC_BODY.match(stripped):
-        return stripped
+    # Rebuild only when the listing omitted a symbol, never from 2ROOT… rows.
+    if text:
+        return ""
     if underlying and expiration is not None and right and strike is not None and strike > 0:
-        return occ_symbol(underlying, expiration, right, strike)
-    return stripped or text
+        built = occ_symbol(underlying, expiration, right, strike)
+        return built if is_standard_occ_option_symbol(built, underlying=underlying) else ""
+    return ""

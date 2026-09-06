@@ -16,7 +16,11 @@ from typing import Any, Sequence
 
 from trading_system.models import to_float
 from trading_system.options.chain import OptionChainProvider
-from trading_system.options.types import OptionContract, normalize_occ_option_symbol, occ_symbol
+from trading_system.options.types import (
+    OptionContract,
+    is_standard_occ_option_symbol,
+    normalize_occ_option_symbol,
+)
 from trading_system.webull_support import WebullApiError, as_record_list, require_ok
 
 logger = logging.getLogger(__name__)
@@ -102,6 +106,17 @@ class WebullOptionChainProvider(OptionChainProvider):
 
         specs = [c for c in (_normalize_contract_spec(r, symbol) for r in raw_contracts) if c]
         specs = [c for c in specs if self.min_dte <= _dte(c.expiration, now) <= self.max_dte]
+        standard = [
+            c for c in specs if is_standard_occ_option_symbol(c.symbol, underlying=symbol)
+        ]
+        skipped = len(specs) - len(standard)
+        if skipped:
+            logger.info(
+                "Skipped %s adjusted/non-OCC roots for %s (not sent to snapshot)",
+                skipped,
+                symbol,
+            )
+        specs = standard
         if not specs:
             logger.info("No listed option contracts in DTE window for %s", symbol)
             return []
@@ -189,9 +204,6 @@ class WebullOptionChainProvider(OptionChainProvider):
                 sym = normalize_occ_option_symbol(raw)
                 if sym:
                     out[sym] = row
-                    # Keep the vendor form too so lookups still match if echoed.
-                    if raw and raw.upper() != sym:
-                        out[raw.upper()] = row
         return out
 
 
@@ -262,7 +274,7 @@ def _normalize_contract_spec(row: dict[str, Any], underlying: str) -> _Spec | No
         strike=float(strike),
     )
     if not symbol:
-        symbol = occ_symbol(underlying, exp, right, strike)
+        return None
     return _Spec(symbol, underlying.upper(), right, exp, float(strike))
 
 

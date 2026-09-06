@@ -23,7 +23,12 @@ from trading_system.regime.features import compute_features
 from trading_system.regime.types import MarketRegime
 from trading_system.scanner.features import extract_symbol_features
 from trading_system.options.filters import filter_contract
-from trading_system.options.types import OptionContract, normalize_occ_option_symbol, occ_symbol
+from trading_system.options.types import (
+    OptionContract,
+    is_standard_occ_option_symbol,
+    normalize_occ_option_symbol,
+    occ_symbol,
+)
 from trading_system.options.webull_chain import WebullOptionChainProvider, _merge_contract, _normalize_contract_spec
 from trading_system.risk.limits import RiskLimits
 from trading_system.scanner.engine import OpportunityScanner
@@ -313,22 +318,27 @@ def test_scan_empty_includes_reject_diagnosis():
         assert row["reason"] in {"no_setup", "regime_fit", "score_floor", "error"}
 
 
-def test_normalize_occ_strips_webull_digit_prefix():
-    assert normalize_occ_option_symbol("2NVDA261016C00210000") == "NVDA261016C00210000"
-    assert normalize_occ_option_symbol("2TSLA261016P00306500") == "TSLA261016P00306500"
-    assert normalize_occ_option_symbol("2AAPL261009C00320430") == "AAPL261009C00320430"
-    assert normalize_occ_option_symbol("NVDA261016C00210000") == "NVDA261016C00210000"
-    rebuilt = normalize_occ_option_symbol(
-        "2NVDA261016C00210000",
-        underlying="NVDA",
-        expiration=date(2026, 10, 16),
-        right="CALL",
-        strike=210.0,
+def test_standard_occ_keeps_roots_and_skips_adjusted_series():
+    assert is_standard_occ_option_symbol("NVDA261016C00230000", underlying="NVDA")
+    assert not is_standard_occ_option_symbol("2NVDA261016C00210000", underlying="NVDA")
+    assert not is_standard_occ_option_symbol("2TSLA261016P00306500", underlying="TSLA")
+    assert not is_standard_occ_option_symbol("2AAPL261009C00320430", underlying="AAPL")
+    assert normalize_occ_option_symbol("NVDA261016C00230000", underlying="NVDA") == "NVDA261016C00230000"
+    # Do not strip the leading 2 and pretend — skip adjusted series.
+    assert normalize_occ_option_symbol("2NVDA261016C00210000", underlying="NVDA") == ""
+    assert (
+        normalize_occ_option_symbol(
+            "2NVDA261016C00210000",
+            underlying="NVDA",
+            expiration=date(2026, 10, 16),
+            right="CALL",
+            strike=210.0,
+        )
+        == ""
     )
-    assert rebuilt == "NVDA261016C00210000"
 
 
-def test_webull_chain_sends_clean_occ_to_snapshot():
+def test_webull_chain_sends_only_standard_occ_to_snapshot():
     seen: list[str] = []
 
     class _Instrument:
@@ -336,18 +346,32 @@ def test_webull_chain_sends_clean_occ_to_snapshot():
             return _FakeResponse(
                 [
                     {
-                        "symbol": "2NVDA261016C00210000",
+                        "symbol": "NVDA261016C00230000",
                         "option_type": "CALL",
-                        "strike_price": "210",
+                        "strike_price": "230",
                         "expire_date": "2026-10-16",
                         "instrument_id": "1",
                     },
                     {
-                        "symbol": "2TSLA261016P00306500",
-                        "option_type": "PUT",
-                        "strike_price": "306.5",
+                        "symbol": "2NVDA261016C00210000",
+                        "option_type": "CALL",
+                        "strike_price": "210",
                         "expire_date": "2026-10-16",
                         "instrument_id": "2",
+                    },
+                    {
+                        "symbol": "2NVDA261016P00210000",
+                        "option_type": "PUT",
+                        "strike_price": "210",
+                        "expire_date": "2026-10-16",
+                        "instrument_id": "3",
+                    },
+                    {
+                        "symbol": "NVDA261016P00225000",
+                        "option_type": "PUT",
+                        "strike_price": "225",
+                        "expire_date": "2026-10-16",
+                        "instrument_id": "4",
                     },
                 ]
             )
@@ -358,7 +382,7 @@ def test_webull_chain_sends_clean_occ_to_snapshot():
             return _FakeResponse(
                 [
                     {
-                        "symbol": "NVDA261016C00210000",
+                        "symbol": "NVDA261016C00230000",
                         "bid": "4.0",
                         "ask": "4.2",
                         "delta": "0.35",
@@ -366,7 +390,7 @@ def test_webull_chain_sends_clean_occ_to_snapshot():
                         "open_interest": "1000",
                     },
                     {
-                        "symbol": "TSLA261016P00306500",
+                        "symbol": "NVDA261016P00225000",
                         "bid": "8.0",
                         "ask": "8.3",
                         "delta": "-0.33",
@@ -381,10 +405,10 @@ def test_webull_chain_sends_clean_occ_to_snapshot():
         min_dte=30,
         max_dte=60,
     )
-    chain = provider.get_chain("NVDA", as_of=datetime(2026, 9, 6, tzinfo=timezone.utc), spot=210.0)
-    assert seen == ["NVDA261016C00210000", "TSLA261016P00306500"]
-    assert all(not s.startswith("2") for s in seen)
-    assert {c.symbol for c in chain} == {"NVDA261016C00210000", "TSLA261016P00306500"}
+    chain = provider.get_chain("NVDA", as_of=datetime(2026, 9, 6, tzinfo=timezone.utc), spot=230.0)
+    assert seen == ["NVDA261016C00230000", "NVDA261016P00225000"]
+    assert all(s.startswith("NVDA") and not s.startswith("2") for s in seen)
+    assert {c.symbol for c in chain} == {"NVDA261016C00230000", "NVDA261016P00225000"}
 
 
 def test_webull_chain_merges_contracts_and_snapshots():
