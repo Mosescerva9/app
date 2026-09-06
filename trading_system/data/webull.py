@@ -9,8 +9,10 @@ from __future__ import annotations
 import logging
 from typing import Any, Sequence
 
+from trading_system.data.bars import bars_from_payload, categories_to_try
 from trading_system.data.base import MarketDataProvider
-from trading_system.models import Bar, QuoteSnapshot, ms_to_datetime, to_float
+from trading_system.models import QuoteSnapshot, to_float
+from trading_system.webull_support import require_ok
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,15 @@ class WebullMarketDataProvider(MarketDataProvider):
         self._endpoint = api_endpoint
         logger.info("Webull market data client ready (endpoint=%s)", api_endpoint)
 
+    @property
+    def data_client(self) -> Any:
+        """Official DataClient — shared with the options-chain adapter."""
+        return self._data
+
+    @property
+    def endpoint(self) -> str:
+        return self._endpoint
+
     def ping(self) -> dict:
         return {"provider": self.name, "ok": True, "endpoint": self._endpoint}
 
@@ -48,36 +59,52 @@ class WebullMarketDataProvider(MarketDataProvider):
         timespan: str = "D",
         count: int = 60,
         category: str = "US_STOCK",
-    ) -> list[Bar]:
+    ) -> list:
         ts = _map_timespan(timespan)
-        res = self._data.market_data.get_history_bar(
-            symbol.upper(),
-            category,
-            ts,
-            count=str(count),
-        )
-        payload = _require_ok(res, "get_history_bar")
-        rows = _extract_bar_rows(payload)
-        bars: list[Bar] = []
-        for row in rows:
-            bars.append(
-                Bar(
-                    symbol=symbol.upper(),
-                    timestamp=ms_to_datetime(
-                        row.get("timestamp")
-                        or row.get("time")
-                        or row.get("startTime")
-                        or row.get("date")
-                    ),
-                    open=float(to_float(row.get("open") or row.get("o")) or 0.0),
-                    high=float(to_float(row.get("high") or row.get("h")) or 0.0),
-                    low=float(to_float(row.get("low") or row.get("l")) or 0.0),
-                    close=float(to_float(row.get("close") or row.get("c")) or 0.0),
-                    volume=float(to_float(row.get("volume") or row.get("v")) or 0.0),
-                    timespan=ts,
+        last_error: Exception | None = None
+        for cat in categories_to_try(symbol, category):
+            try:
+                bars = self._history_bars_once(
+                    symbol.upper(), timespan=ts, count=count, category=cat
                 )
-            )
-        return bars
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                logger.info("History bars %s category=%s failed: %s", symbol, cat, exc)
+                continue
+            if bars:
+                if cat != category:
+                    logger.info(
+                        "Resolved %s history via category=%s (requested %s)",
+                        symbol.upper(),
+                        cat,
+                        category,
+                    )
+                return bars
+        if last_error is not None:
+            raise last_error
+        return []
+
+    def _history_bars_once(
+        self,
+        symbol: str,
+        *,
+        timespan: str,
+        count: int,
+        category: str,
+    ) -> list:
+        # real_time_required=Y includes the in-progress daily bar so last_close
+        # tracks the same RTH last as snapshots (official default is Y; set explicitly).
+        # trading_sessions=RTH matches snapshot defaults (extended hours off).
+        res = self._data.market_data.get_history_bar(
+            symbol,
+            category,
+            timespan,
+            count=str(count),
+            real_time_required="Y",
+            trading_sessions="RTH" if timespan == "D" else None,
+        )
+        payload = require_ok(res, "get_history_bar", endpoint=self._endpoint)
+        return bars_from_payload(payload, symbol=symbol, timespan=timespan)
 
     def get_snapshots(
         self,
@@ -86,31 +113,37 @@ class WebullMarketDataProvider(MarketDataProvider):
         category: str = "US_STOCK",
     ) -> list[QuoteSnapshot]:
         symbol_list = [s.upper() for s in symbols]
-        # SDK accepts list or comma-separated depending on request helper; pass list.
-        res = self._data.market_data.get_snapshot(symbol_list, category)
-        payload = _require_ok(res, "get_snapshot")
-        rows = payload if isinstance(payload, list) else payload.get("data") or payload.get("snapshots") or []
+        if not symbol_list:
+            return []
+        # Batch only works with one category; split ETFs vs stocks.
+        from trading_system.data.bars import resolve_equity_category
+
+        by_cat: dict[str, list[str]] = {}
+        for sym in symbol_list:
+            cat = resolve_equity_category(sym, category)
+            by_cat.setdefault(cat, []).append(sym)
+
         out: list[QuoteSnapshot] = []
-        for row in rows:
-            sym = str(row.get("symbol") or row.get("ticker") or "").upper()
-            last = to_float(row.get("price") or row.get("last") or row.get("close") or row.get("tradePrice"))
-            out.append(
-                QuoteSnapshot(
-                    symbol=sym,
-                    last=last,
-                    open=to_float(row.get("open")),
-                    high=to_float(row.get("high")),
-                    low=to_float(row.get("low")),
-                    prev_close=to_float(row.get("pre_close") or row.get("prevClose") or row.get("pPrice")),
-                    volume=to_float(row.get("volume")),
-                    change=to_float(row.get("change")),
-                    change_ratio=to_float(row.get("change_ratio") or row.get("changeRatio")),
-                    bid=to_float(row.get("bid") or row.get("bidPrice")),
-                    ask=to_float(row.get("ask") or row.get("askPrice")),
-                    raw=dict(row),
-                )
-            )
+        seen: set[str] = set()
+        for cat, group in by_cat.items():
+            rows = self._snapshots_once(group, category=cat)
+            if not rows and cat == "US_ETF":
+                rows = self._snapshots_once(group, category="US_STOCK")
+            elif not rows and cat == "US_STOCK":
+                rows = self._snapshots_once(group, category="US_ETF")
+            for snap in rows:
+                if snap.symbol and snap.symbol not in seen:
+                    seen.add(snap.symbol)
+                    out.append(snap)
+        # Preserve caller order.
+        order = {s: i for i, s in enumerate(symbol_list)}
+        out.sort(key=lambda s: order.get(s.symbol, 999))
         return out
+
+    def _snapshots_once(self, symbols: list[str], *, category: str) -> list[QuoteSnapshot]:
+        res = self._data.market_data.get_snapshot(symbols, category)
+        payload = require_ok(res, "get_snapshot", endpoint=self._endpoint)
+        return _snapshots_from_payload(payload)
 
     def get_option_snapshots(
         self,
@@ -119,30 +152,50 @@ class WebullMarketDataProvider(MarketDataProvider):
         category: str = "US_OPTION",
     ) -> list[QuoteSnapshot]:
         symbols = [s.upper() for s in option_symbols]
-        res = self._data.option_market_data.get_option_snapshot(symbols, category)
-        payload = _require_ok(res, "get_option_snapshot")
-        rows = payload if isinstance(payload, list) else payload.get("data") or payload.get("snapshots") or []
+        if not symbols:
+            return []
         out: list[QuoteSnapshot] = []
-        for row in rows:
-            sym = str(row.get("symbol") or row.get("ticker") or "").upper()
-            last = to_float(row.get("price") or row.get("last") or row.get("close"))
-            out.append(
-                QuoteSnapshot(
-                    symbol=sym,
-                    last=last,
-                    open=to_float(row.get("open")),
-                    high=to_float(row.get("high")),
-                    low=to_float(row.get("low")),
-                    prev_close=to_float(row.get("pre_close") or row.get("prevClose")),
-                    volume=to_float(row.get("volume")),
-                    change=to_float(row.get("change")),
-                    change_ratio=to_float(row.get("change_ratio") or row.get("changeRatio")),
-                    bid=to_float(row.get("bid") or row.get("bidPrice")),
-                    ask=to_float(row.get("ask") or row.get("askPrice")),
-                    raw=dict(row),
-                )
-            )
+        # Official option snapshot limit: 20 symbols per request.
+        for i in range(0, len(symbols), 20):
+            chunk = symbols[i : i + 20]
+            res = self._data.option_market_data.get_option_snapshot(chunk, category)
+            payload = require_ok(res, "get_option_snapshot", endpoint=self._endpoint)
+            out.extend(_snapshots_from_payload(payload))
         return out
+
+
+def _snapshots_from_payload(payload: Any) -> list[QuoteSnapshot]:
+    from trading_system.webull_support import as_record_list
+
+    rows = payload if isinstance(payload, list) else as_record_list(payload, ("data", "snapshots", "result"))
+    out: list[QuoteSnapshot] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        sym = str(row.get("symbol") or row.get("ticker") or "").upper()
+        last = to_float(
+            row.get("price")
+            or row.get("last")
+            or row.get("close")
+            or row.get("tradePrice")
+        )
+        out.append(
+            QuoteSnapshot(
+                symbol=sym,
+                last=last,
+                open=to_float(row.get("open")),
+                high=to_float(row.get("high")),
+                low=to_float(row.get("low")),
+                prev_close=to_float(row.get("pre_close") or row.get("prevClose") or row.get("pPrice")),
+                volume=to_float(row.get("volume")),
+                change=to_float(row.get("change")),
+                change_ratio=to_float(row.get("change_ratio") or row.get("changeRatio")),
+                bid=to_float(row.get("bid") or row.get("bidPrice")),
+                ask=to_float(row.get("ask") or row.get("askPrice")),
+                raw=dict(row),
+            )
+        )
+    return out
 
 
 def _map_timespan(timespan: str) -> str:
@@ -169,37 +222,7 @@ def _map_timespan(timespan: str) -> str:
         "HOUR": "M60",
     }
     mapped = aliases.get(key, key)
-    # Accept already-correct SDK names.
     valid = {"S5", "S15", "M1", "M5", "M15", "M30", "M60", "M120", "M240", "D", "W", "M", "Y"}
     if mapped not in valid:
         raise ValueError(f"Unsupported timespan={timespan!r}; expected one of {sorted(valid)}")
     return mapped
-
-
-def _require_ok(res: Any, action: str) -> Any:
-    status = getattr(res, "status_code", None)
-    body = res.json() if hasattr(res, "json") else res
-    if status is not None and int(status) >= 400:
-        raise RuntimeError(f"Webull {action} failed HTTP {status}: {body}")
-    return body
-
-
-def _extract_bar_rows(payload: Any) -> list[dict[str, Any]]:
-    if payload is None:
-        return []
-    if isinstance(payload, list):
-        if payload and isinstance(payload[0], dict) and "symbol" in payload[0] and "bars" in payload[0]:
-            rows: list[dict[str, Any]] = []
-            for item in payload:
-                rows.extend(item.get("bars") or [])
-            return rows
-        return [r for r in payload if isinstance(r, dict)]
-    if isinstance(payload, dict):
-        for key in ("bars", "data", "result"):
-            value = payload.get(key)
-            if isinstance(value, list):
-                return [r for r in value if isinstance(r, dict)]
-        # Single-symbol envelope
-        if "open" in payload or "c" in payload:
-            return [payload]
-    return []

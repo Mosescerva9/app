@@ -12,10 +12,11 @@ Branch: `cursor/trading-system-phase4-scanner-e1ab`
 - Regime-fit scoring using Phase 3 regime engine
 - CLI: `python -m trading_system scan --benchmark SPY --min-score 55`
 - Decisions: `CANDIDATE` / `WATCH` / reject (filtered from ranked list)
+- Empty scans now include per-symbol `rejects` / `empty_scan_diagnosis` (`no_setup`, `regime_fit`, `score_floor`, `error`)
 
 ### Still locked
 - Live order placement
-- Options contract selection (Phase 5+)
+- Multi-leg options / backtester (later phases)
 
 ### Try
 ```bash

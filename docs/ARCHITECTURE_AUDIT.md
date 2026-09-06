@@ -2,7 +2,7 @@
 
 **Status:** Phase 1 audit complete; Phase 2 scaffold implemented (read-only). No live order placement.  
 **Date:** 2026-09-05  
-**Capital assumption:** ~$1,000  
+**Capital assumption:** ~$1,000 (Phase 1). Later research phases use **$1,500 / 10% → $150 per trade**.  
 **Default mode:** `RESEARCH` → then `PAPER` → only later `LIVE_APPROVAL`
 
 ---

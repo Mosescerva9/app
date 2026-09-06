@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from trading_system.data.base import MarketDataProvider
 from trading_system.options.chain import MockOptionChainProvider, OptionChainProvider
+from trading_system.options.factory import build_option_chain_provider
 from trading_system.options.filters import OptionFilterConfig, filter_contract
 from trading_system.options.scoring import score_contract
 from trading_system.options.types import OptionCandidate, OptionsAnalysisReport
@@ -26,7 +27,7 @@ class OptionsAnalysisEngine:
     Rules (Phase 5):
     - LONG equity bias → long calls; SHORT bias → long puts
     - Prefer 30–60 DTE, |delta| ~0.25–0.45, liquid OI/spreads
-    - Max loss = premium × 100 must fit risk budget (~$40 on $1k)
+    - Max loss = premium × 100 must fit risk budget (~$150 on $1,500)
     - Contract must pass its own filters/scores (equity score alone is not enough)
     """
 
@@ -46,7 +47,12 @@ class OptionsAnalysisEngine:
         universe: tuple[str, ...] | list[str] | None = None,
     ) -> None:
         self.market_data = market_data
-        self.chain_provider = chain_provider or MockOptionChainProvider()
+        if chain_provider is not None:
+            self.chain_provider = chain_provider
+        elif getattr(market_data, "name", "") == "webull":
+            self.chain_provider = build_option_chain_provider(get_settings(), market_data)
+        else:
+            self.chain_provider = MockOptionChainProvider()
         self.risk = risk or load_risk_limits(get_settings())
         self.filter_config = filter_config or OptionFilterConfig()
         self.lookback = lookback
@@ -83,7 +89,7 @@ class OptionsAnalysisEngine:
                 rejected["no_direction"] += 1
                 continue
             symbol_candidates, evaluated = self._analyze_opportunity(
-                opp, as_of=as_of, rejected=rejected
+                opp, as_of=as_of, rejected=rejected, notes=notes
             )
             contracts_evaluated += evaluated
             candidates.extend(symbol_candidates)
@@ -91,6 +97,14 @@ class OptionsAnalysisEngine:
         candidates.sort(key=lambda c: c.scores.overall, reverse=True)
         selected = candidates[: self.max_results]
 
+        if not report.opportunities and getattr(report, "rejects", None):
+            counts: dict[str, int] = {}
+            for row in report.rejects:
+                counts[row.reason] = counts.get(row.reason, 0) + 1
+            notes.append(
+                "Equity scan produced 0 opportunities; option engine has nothing to size. "
+                f"Scan rejects: {counts}"
+            )
         if not selected:
             notes.append("No option contracts passed filters/scores for current equity set.")
 
@@ -109,6 +123,7 @@ class OptionsAnalysisEngine:
         *,
         as_of: datetime,
         rejected: Counter[str],
+        notes: list[str],
     ) -> tuple[list[OptionCandidate], int]:
         spot = self._spot(opp.symbol, fallback=opp.entry)
         try:
@@ -116,6 +131,7 @@ class OptionsAnalysisEngine:
         except Exception as exc:  # noqa: BLE001
             logger.info("Chain failed for %s: %s", opp.symbol, exc)
             rejected["chain_error"] += 1
+            notes.append(f"{opp.symbol} chain_error: {exc}")
             return [], 0
 
         side = opp.direction.value

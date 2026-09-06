@@ -114,8 +114,8 @@ def test_mock_chain_has_dte_and_rights():
     rights = {c.right for c in chain}
     assert 35 in dtes or 45 in dtes
     assert rights == {"CALL", "PUT"}
-    # At least some mid-delta contracts should fit the $40 budget
-    affordable = [c for c in chain if c.premium_per_contract_usd <= 40 and 30 <= c.dte <= 60]
+    # At least some mid-delta contracts should fit the $150 research budget
+    affordable = [c for c in chain if c.premium_per_contract_usd <= 150 and 30 <= c.dte <= 60]
     assert len(affordable) > 0
 
 

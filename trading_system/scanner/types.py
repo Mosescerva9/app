@@ -101,6 +101,18 @@ class Opportunity:
 
 
 @dataclass(frozen=True)
+class SymbolReject:
+    """Why a universe symbol did not become a ranked opportunity."""
+
+    symbol: str
+    reason: str  # no_setup | regime_fit | score_floor | error
+    detail: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"symbol": self.symbol, "reason": self.reason, "detail": self.detail}
+
+
+@dataclass(frozen=True)
 class ScanReport:
     benchmark: str
     regime: str
@@ -108,15 +120,22 @@ class ScanReport:
     universe_size: int
     opportunities: list[Opportunity]
     notes: list[str] = field(default_factory=list)
+    rejects: list[SymbolReject] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        reject_counts: dict[str, int] = {}
+        for row in self.rejects:
+            reject_counts[row.reason] = reject_counts.get(row.reason, 0) + 1
+        payload: dict[str, Any] = {
             "benchmark": self.benchmark,
             "regime": self.regime,
             "regime_confidence": round(self.regime_confidence, 3),
             "universe_size": self.universe_size,
             "opportunity_count": len(self.opportunities),
             "opportunities": [o.to_dict() for o in self.opportunities],
+            "reject_count": len(self.rejects),
+            "reject_counts": reject_counts,
+            "rejects": [r.to_dict() for r in self.rejects],
             "notes": self.notes,
             "scoring_policy": {
                 "method": "weighted_renormalized",
@@ -127,6 +146,35 @@ class ScanReport:
                 ),
             },
         }
+        if not self.opportunities:
+            payload["empty_scan_diagnosis"] = _empty_scan_diagnosis(
+                self.rejects, regime=self.regime
+            )
+        return payload
+
+
+def _empty_scan_diagnosis(
+    rejects: list[SymbolReject],
+    *,
+    regime: str,
+) -> dict[str, Any]:
+    counts: dict[str, int] = {}
+    for row in rejects:
+        counts[row.reason] = counts.get(row.reason, 0) + 1
+    top = [
+        f"{r.symbol}: {r.reason} ({r.detail})"
+        for r in rejects[:8]
+    ]
+    summary = (
+        f"No opportunities passed filters under regime={regime}. "
+        + (
+            ", ".join(f"{k}={v}" for k, v in sorted(counts.items()))
+            if counts
+            else "universe produced no scored rows"
+        )
+        + "."
+    )
+    return {"summary": summary, "reject_counts": counts, "examples": top}
 
 
 def _r(value: float | None) -> float | None:

@@ -1,6 +1,7 @@
 """Webull Trading API read adapter (accounts / balances / positions / open orders).
 
-No order placement in Phase 2.
+Uses official TradeClient.account_v2 / order_v3 methods only.
+No order placement.
 """
 
 from __future__ import annotations
@@ -10,6 +11,14 @@ from typing import Any
 
 from trading_system.broker.base import BrokerReadClient
 from trading_system.models import AccountBalance, OpenOrder, Position, to_float
+from trading_system.webull_support import (
+    WebullApiError,
+    account_access_hint,
+    as_record_list,
+    collect_account_ids,
+    extract_account_id,
+    require_ok,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,43 +46,73 @@ class WebullBrokerReadClient(BrokerReadClient):
         self._endpoint = api_endpoint
         logger.info("Webull broker read client ready (endpoint=%s)", api_endpoint)
 
+    @property
+    def endpoint(self) -> str:
+        return self._endpoint
+
     def list_accounts(self) -> list[dict]:
         res = self._trade.account_v2.get_account_list()
-        payload = _require_ok(res, "get_account_list")
-        if isinstance(payload, list):
-            return [dict(x) for x in payload]
-        if isinstance(payload, dict):
-            for key in ("accounts", "data", "result"):
-                if isinstance(payload.get(key), list):
-                    return [dict(x) for x in payload[key]]
-            return [payload]
-        return []
+        payload = require_ok(res, "get_account_list", endpoint=self._endpoint)
+        rows = _account_rows(payload)
+        if not rows:
+            logger.info("Account list empty on %s", self._endpoint)
+        return rows
 
     def get_balance(self, account_id: str) -> AccountBalance:
+        if not account_id:
+            raise WebullApiError(
+                "Missing account_id. " + account_access_hint(endpoint=self._endpoint),
+                action="get_account_balance",
+                error_code="MISSING_ACCOUNT_ID",
+                endpoint=self._endpoint,
+            )
         res = self._trade.account_v2.get_account_balance(account_id)
-        payload = _require_ok(res, "get_account_balance")
+        try:
+            payload = require_ok(res, "get_account_balance", endpoint=self._endpoint)
+        except WebullApiError as exc:
+            raise _with_account_context(exc, account_id=account_id, endpoint=self._endpoint) from exc
         data = payload if isinstance(payload, dict) else {"raw": payload}
+        currency_row = _first_currency_asset(data)
+        equity = to_float(
+            data.get("total_net_liquidation_value")
+            or data.get("net_liquidation")
+            or data.get("totalEquity")
+            or data.get("equity")
+            or data.get("total_market_value")
+        )
+        cash = to_float(
+            data.get("total_cash_balance")
+            or data.get("cash_balance")
+            or data.get("cash")
+            or data.get("settledCash")
+            or (currency_row.get("cash_balance") if currency_row else None)
+        )
+        buying_power = to_float(
+            data.get("buying_power")
+            or data.get("buyingPower")
+            or data.get("dayBuyingPower")
+            or (currency_row.get("buying_power") if currency_row else None)
+            or (currency_row.get("option_buying_power") if currency_row else None)
+        )
         return AccountBalance(
             account_id=account_id,
-            total_equity=to_float(
-                data.get("total_market_value")
-                or data.get("net_liquidation")
-                or data.get("totalEquity")
-                or data.get("equity")
-            ),
-            cash=to_float(data.get("cash_balance") or data.get("cash") or data.get("settledCash")),
-            buying_power=to_float(
-                data.get("buying_power") or data.get("buyingPower") or data.get("dayBuyingPower")
-            ),
+            total_equity=equity,
+            cash=cash,
+            buying_power=buying_power,
             raw=data,
         )
 
     def get_positions(self, account_id: str) -> list[Position]:
         res = self._trade.account_v2.get_account_position(account_id)
-        payload = _require_ok(res, "get_account_position")
-        rows = _as_list(payload, keys=("positions", "data", "result", "holdings"))
+        try:
+            payload = require_ok(res, "get_account_position", endpoint=self._endpoint)
+        except WebullApiError as exc:
+            raise _with_account_context(exc, account_id=account_id, endpoint=self._endpoint) from exc
+        rows = as_record_list(payload, keys=("positions", "data", "result", "holdings"))
         out: list[Position] = []
         for row in rows:
+            if not isinstance(row, dict):
+                continue
             sym = str(row.get("symbol") or row.get("ticker") or row.get("instrument_id") or "").upper()
             qty = to_float(row.get("quantity") or row.get("qty") or row.get("position")) or 0.0
             out.append(
@@ -90,10 +129,15 @@ class WebullBrokerReadClient(BrokerReadClient):
 
     def get_open_orders(self, account_id: str) -> list[OpenOrder]:
         res = self._trade.order_v3.get_order_open(account_id)
-        payload = _require_ok(res, "get_order_open")
-        rows = _as_list(payload, keys=("orders", "data", "result"))
+        try:
+            payload = require_ok(res, "get_order_open", endpoint=self._endpoint)
+        except WebullApiError as exc:
+            raise _with_account_context(exc, account_id=account_id, endpoint=self._endpoint) from exc
+        rows = as_record_list(payload, keys=("orders", "data", "result"))
         out: list[OpenOrder] = []
         for row in rows:
+            if not isinstance(row, dict):
+                continue
             out.append(
                 OpenOrder(
                     order_id=str(row.get("order_id") or row.get("orderId") or row.get("id") or ""),
@@ -112,23 +156,40 @@ class WebullBrokerReadClient(BrokerReadClient):
         return out
 
 
-def _require_ok(res: Any, action: str) -> Any:
-    status = getattr(res, "status_code", None)
-    body = res.json() if hasattr(res, "json") else res
-    if status is not None and int(status) >= 400:
-        raise RuntimeError(f"Webull {action} failed HTTP {status}: {body}")
-    return body
-
-
-def _as_list(payload: Any, keys: tuple[str, ...]) -> list[dict]:
-    if payload is None:
-        return []
+def _account_rows(payload: Any) -> list[dict]:
     if isinstance(payload, list):
-        return [x for x in payload if isinstance(x, dict)]
+        return [dict(x) for x in payload if isinstance(x, dict)]
     if isinstance(payload, dict):
-        for key in keys:
-            value = payload.get(key)
-            if isinstance(value, list):
-                return [x for x in value if isinstance(x, dict)]
-        return [payload]
+        for key in ("accounts", "data", "result"):
+            if isinstance(payload.get(key), list):
+                return [dict(x) for x in payload[key] if isinstance(x, dict)]
+        if extract_account_id(payload):
+            return [payload]
     return []
+
+
+def _first_currency_asset(data: dict[str, Any]) -> dict[str, Any]:
+    rows = data.get("account_currency_assets") or data.get("accountCurrencyAssets") or []
+    if isinstance(rows, list):
+        for row in rows:
+            if isinstance(row, dict):
+                return row
+    return {}
+
+
+def _with_account_context(exc: WebullApiError, *, account_id: str, endpoint: str) -> WebullApiError:
+    extra = account_access_hint(endpoint=endpoint, account_id=account_id)
+    if extra in str(exc):
+        return exc
+    return WebullApiError(
+        f"{exc} {extra}",
+        action=exc.action,
+        status=exc.status,
+        error_code=exc.error_code,
+        endpoint=endpoint,
+        body=exc.body,
+    )
+
+
+def known_account_ids(accounts: list[dict]) -> list[str]:
+    return collect_account_ids(accounts)

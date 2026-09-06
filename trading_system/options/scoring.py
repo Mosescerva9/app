@@ -72,7 +72,7 @@ def score_contract(
     if contract.dte >= 40:
         reasons.append("dte_in_sweet_spot")
 
-    # Risk fit: how well premium sits inside the ~$40 budget (prefer using ~50-90%)
+    # Risk fit: how well premium sits inside the per-trade budget (~$150 on $1,500)
     max_risk = max(limits.max_risk_per_trade_usd, 1.0)
     premium_usd = contract.premium_per_contract_usd
     utilization = premium_usd / max_risk

@@ -67,8 +67,8 @@ class Settings:
                 or "api.sandbox.webull.com"
             ),
             webull_account_id=os.getenv("WEBULL_ACCOUNT_ID", "").strip(),
-            account_equity_usd=float(os.getenv("ACCOUNT_EQUITY_USD", "1000")),
-            max_risk_per_trade_pct=float(os.getenv("MAX_RISK_PER_TRADE_PCT", "0.04")),
+            account_equity_usd=float(os.getenv("ACCOUNT_EQUITY_USD", "1500")),
+            max_risk_per_trade_pct=float(os.getenv("MAX_RISK_PER_TRADE_PCT", "0.10")),
             max_simultaneous_positions=int(os.getenv("MAX_SIMULTANEOUS_POSITIONS", "2")),
             max_daily_loss_pct=float(os.getenv("MAX_DAILY_LOSS_PCT", "0.05")),
             max_weekly_loss_pct=float(os.getenv("MAX_WEEKLY_LOSS_PCT", "0.10")),

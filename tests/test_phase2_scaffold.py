@@ -91,7 +91,9 @@ def test_runtime_status_and_fetch():
     assert status["live_execution_unlocked"] is False
     assert status["risk"]["max_risk_per_trade_usd"] == 40.0
     bars = runtime.fetch_bars("MSFT", count=5)
-    assert len(bars) == 5
+    assert bars["count"] == 5
+    assert len(bars["bars"]) == 5
+    assert "last_close" in bars
     snaps = runtime.fetch_snapshots(["QQQ"])
     assert snaps[0]["symbol"] == "QQQ"
     acct = runtime.account_overview()

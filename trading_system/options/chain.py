@@ -29,8 +29,8 @@ class MockOptionChainProvider(OptionChainProvider):
     Generates liquid mid-delta calls/puts across several expirations so the
     options engine can be tested without Webull Advanced Quotes.
 
-    Premiums are deliberately scaled so some mid-delta contracts fit a ~$40
-    per-trade risk budget on a $1k account.
+    Premiums are deliberately scaled so some mid-delta contracts fit the
+    per-trade risk budget (~$150 on a $1,500 account).
     """
 
     def __init__(
@@ -100,7 +100,7 @@ class MockOptionChainProvider(OptionChainProvider):
             delta = -max(0.05, min(0.95, 1.0 - raw_delta))
 
         intrinsic = max(0.0, spot - strike) if right == "CALL" else max(0.0, strike - spot)
-        # Mid ≈ $0.20–$0.40 for OTM/ATM so premium×100 can fit ~$40 budget.
+        # Mid ≈ $0.20–$0.40 for OTM/ATM so premium×100 can fit the research budget.
         time_value = 0.15 + abs(delta) * 0.25 + iv * sqrt(t_years) * 0.35
         mid = max(0.05, time_value + intrinsic * 0.05)
         # Deep ITM becomes too expensive — intentional rejection fodder.

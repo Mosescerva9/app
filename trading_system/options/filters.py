@@ -1,4 +1,4 @@
-"""Hard filters for option contracts on a ~$1k account."""
+"""Hard filters for option contracts on a ~$1,500 account (~$150 risk/trade)."""
 
 from __future__ import annotations
 

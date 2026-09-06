@@ -23,7 +23,7 @@ def _print(data: object) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="trading-system",
-        description="AI trading research system — Phase 5 (options + scanner + regime)",
+        description="AI trading research system — Phase 5 (options + scanner + regime; no order placement)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
