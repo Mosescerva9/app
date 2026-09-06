@@ -17,6 +17,7 @@ from trading_system.data import build_market_data_provider
 from trading_system.data.base import MarketDataProvider
 from trading_system.decision import DecisionPackageEngine
 from trading_system.events import CatalystProvider, build_catalyst_provider
+from trading_system.fundamentals import FundamentalsProvider, build_fundamentals_provider
 from trading_system.modes import PHASE, LIVE_EXECUTION_UNLOCKED, assert_mode_allowed
 from trading_system.options import OptionsAnalysisEngine, build_option_chain_provider
 from trading_system.regime import MarketRegimeEngine
@@ -40,6 +41,7 @@ class ResearchRuntime:
         scanner: OpportunityScanner | None = None,
         options_engine: OptionsAnalysisEngine | None = None,
         catalyst_provider: CatalystProvider | None = None,
+        fundamentals_provider: FundamentalsProvider | None = None,
         critic: AdversarialCritic | None = None,
         decision_engine: DecisionPackageEngine | None = None,
     ) -> None:
@@ -59,6 +61,9 @@ class ResearchRuntime:
         self.catalyst_provider = catalyst_provider or build_catalyst_provider(
             self.settings, self.market_data
         )
+        self.fundamentals_provider = fundamentals_provider or build_fundamentals_provider(
+            self.settings, self.market_data
+        )
         self.critic = critic or CompositeAdversarialCritic(
             RuleBasedAdversarialCritic(),
             NullLLMCritic(),
@@ -66,6 +71,7 @@ class ResearchRuntime:
         self.decision_engine = decision_engine or DecisionPackageEngine(
             options_engine=self.options_engine,
             catalyst_provider=self.catalyst_provider,
+            fundamentals_provider=self.fundamentals_provider,
             critic=self.critic,
             risk=self.risk,
         )
@@ -81,6 +87,11 @@ class ResearchRuntime:
             "option_chain_provider": type(self.options_engine.chain_provider).__name__,
             "catalyst_provider": getattr(
                 self.catalyst_provider, "name", type(self.catalyst_provider).__name__
+            ),
+            "fundamentals_provider": getattr(
+                self.fundamentals_provider,
+                "name",
+                type(self.fundamentals_provider).__name__,
             ),
             "adversarial_critic": getattr(self.critic, "name", type(self.critic).__name__),
             "webull_configured": self.settings.webull_configured,
@@ -299,6 +310,7 @@ class ResearchRuntime:
         engine = DecisionPackageEngine(
             options_engine=options_engine,
             catalyst_provider=self.catalyst_provider,
+            fundamentals_provider=self.fundamentals_provider,
             critic=self.critic,
             risk=self.risk,
             max_packages=max_results,

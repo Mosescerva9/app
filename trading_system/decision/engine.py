@@ -14,6 +14,8 @@ from trading_system.adversarial.rules import RuleBasedAdversarialCritic
 from trading_system.decision.types import DecisionPackage, DecisionReport, DecisionScores
 from trading_system.events.base import CatalystProvider
 from trading_system.events.mock import MockCatalystProvider
+from trading_system.fundamentals.base import FundamentalsProvider
+from trading_system.fundamentals.mock import MockFundamentalsProvider, unavailable_fundamentals
 from trading_system.options.engine import OptionsAnalysisEngine
 from trading_system.options.types import OptionCandidate, OptionsAnalysisReport
 from trading_system.risk.limits import RiskLimits
@@ -28,12 +30,14 @@ class DecisionPackageEngine:
         *,
         options_engine: OptionsAnalysisEngine,
         catalyst_provider: CatalystProvider | None = None,
+        fundamentals_provider: FundamentalsProvider | None = None,
         critic: AdversarialCritic | None = None,
         risk: RiskLimits | None = None,
         max_packages: int = 10,
     ) -> None:
         self.options_engine = options_engine
         self.catalyst_provider = catalyst_provider or MockCatalystProvider()
+        self.fundamentals_provider = fundamentals_provider or MockFundamentalsProvider()
         self.critic = critic or CompositeAdversarialCritic(
             RuleBasedAdversarialCritic(),
             NullLLMCritic(),
@@ -53,10 +57,12 @@ class DecisionPackageEngine:
             now = now.replace(tzinfo=timezone.utc)
         report = options_report or self.options_engine.analyze(scan_report=scan_report)
         notes = [
-            "Architecture Phase 8 Decision Packages: technical + options + catalyst + adversarial.",
-            "Empty/unavailable catalysts do not crash; they lower confidence and note missing data.",
-            "No news headlines are generated. Live execution remains locked.",
+            "Architecture Phase 8 Decision Packages: technical + options + catalyst + fundamentals + adversarial.",
+            "Missing required dimensions set incomplete_research and force stand_aside — no GO / candidate.",
+            "Empty/unavailable catalysts or fundamentals do not crash; they lower confidence.",
+            "No news headlines or fake financials are generated. Live execution remains locked.",
             f"Catalyst provider: {getattr(self.catalyst_provider, 'name', type(self.catalyst_provider).__name__)}",
+            f"Fundamentals provider: {getattr(self.fundamentals_provider, 'name', type(self.fundamentals_provider).__name__)}",
             f"Adversarial critic: {getattr(self.critic, 'name', type(self.critic).__name__)}",
         ]
 
@@ -204,6 +210,17 @@ class DecisionPackageEngine:
                 note="Catalyst provider raised; treating as unavailable (no invented date).",
                 error=str(exc),
             )
+        try:
+            fundamentals = self.fundamentals_provider.get_fundamentals(
+                opportunity.symbol, as_of=as_of
+            )
+        except Exception as exc:  # noqa: BLE001
+            fundamentals = unavailable_fundamentals(
+                opportunity.symbol,
+                source=getattr(self.fundamentals_provider, "name", "unknown"),
+                note="Fundamentals provider raised; treating as unavailable (no invented EPS).",
+                error=str(exc),
+            )
 
         critique = self.critic.critique(
             CritiqueContext(
@@ -227,12 +244,18 @@ class DecisionPackageEngine:
         blended = opportunity.scores.overall
         if option_quality is not None:
             blended = 0.55 * opportunity.scores.overall + 0.45 * option_quality
-        confidence = max(0.0, min(100.0, blended - critique.confidence_penalty))
+        extra_penalty = 0.0
+        if not fundamentals.available and fundamentals.beat_miss != "not_applicable":
+            extra_penalty += 12.0
+        confidence = max(
+            0.0, min(100.0, blended - critique.confidence_penalty - extra_penalty)
+        )
         missing = list(opportunity.scores.missing_dimensions)
         if catalyst.score is None and "catalyst" not in missing:
             missing.append("catalyst")
-        if "fundamental" not in missing:
+        if fundamentals.score is None and "fundamental" not in missing:
             missing.append("fundamental")
+        missing_required = _missing_required(catalyst, fundamentals, option)
 
         scores = DecisionScores(
             technical=opportunity.scores.technical,
@@ -243,21 +266,37 @@ class DecisionPackageEngine:
             crowding_risk=opportunity.scores.crowding_risk,
             options_quality=option_quality,
             catalyst=catalyst.score,
-            fundamental=None,
+            fundamental=fundamentals.score,
             overall=round(blended, 2),
             confidence=round(confidence, 2),
             missing_dimensions=tuple(missing),
         )
-        recommendation = _recommendation(critique, confidence, opportunity.decision)
+        incomplete = bool(missing_required)
+        recommendation = _recommendation(
+            critique, confidence, opportunity.decision, incomplete=incomplete
+        )
         notes = [
-            "RESEARCH Decision Package — not a trade ticket.",
+            "RESEARCH Decision Package — not a trade ticket and not a GO signal.",
             f"recommendation={recommendation} confidence={confidence:.1f} "
             f"(penalty {critique.confidence_penalty:.1f})",
         ]
+        if incomplete:
+            notes.append(
+                "incomplete_research=true: required dimensions missing "
+                f"({', '.join(missing_required)}). Candidate/GO is refused."
+            )
         if option is None:
             notes.append("No qualifying long-premium contract attached.")
         if not catalyst.available:
-            notes.append("Catalyst data missing: confidence penalized; stand-aside preferred if technicals are weak.")
+            notes.append(
+                "Catalyst data missing: confidence penalized; stand-aside required "
+                "until an official earnings date is available (ETFs excepted)."
+            )
+        if not fundamentals.available:
+            notes.append(
+                "Fundamentals missing: official forecast-EPS unavailable; "
+                "not inventing statements or ratios."
+            )
 
         return DecisionPackage(
             as_of=as_of,
@@ -268,7 +307,10 @@ class DecisionPackageEngine:
             equity_opportunity=opportunity,
             option_candidate=option,
             catalyst=catalyst,
+            fundamentals=fundamentals,
             adversarial=critique,
+            incomplete_research=incomplete,
+            missing_required=missing_required,
             risk={
                 "account_equity_usd": self.risk.account_equity_usd,
                 "max_risk_per_trade_usd": self.risk.max_risk_per_trade_usd,
@@ -280,12 +322,31 @@ class DecisionPackageEngine:
         )
 
 
-def _recommendation(critique, confidence: float, equity_decision: str) -> str:
+def _dimension_ok(available: bool, status: str) -> bool:
+    return available and status not in {"unavailable", "unknown"}
+
+
+def _missing_required(catalyst, fundamentals, option) -> tuple[str, ...]:
+    missing: list[str] = []
+    if not _dimension_ok(catalyst.available, catalyst.earnings_status):
+        missing.append("catalyst")
+    if not _dimension_ok(fundamentals.available, fundamentals.beat_miss):
+        missing.append("fundamentals")
+    if option is None:
+        missing.append("options")
+    return tuple(missing)
+
+
+def _recommendation(
+    critique,
+    confidence: float,
+    equity_decision: str,
+    *,
+    incomplete: bool,
+) -> str:
     if critique.reject:
         return "reject"
-    if critique.stand_aside:
-        return "stand_aside"
-    if confidence < 50:
+    if incomplete or critique.stand_aside or confidence < 50:
         return "stand_aside"
     if confidence < 60 or equity_decision == "WATCH":
         return "watch"

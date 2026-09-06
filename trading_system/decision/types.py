@@ -8,6 +8,7 @@ from typing import Any
 
 from trading_system.adversarial.types import AdversarialCritique
 from trading_system.events.types import CatalystSnapshot
+from trading_system.fundamentals.types import FundamentalsSnapshot
 from trading_system.options.types import OptionCandidate
 from trading_system.scanner.types import Opportunity
 
@@ -57,8 +58,11 @@ class DecisionPackage:
     equity_opportunity: Opportunity
     option_candidate: OptionCandidate | None
     catalyst: CatalystSnapshot
+    fundamentals: FundamentalsSnapshot
     adversarial: AdversarialCritique
     risk: dict[str, Any]
+    incomplete_research: bool = True
+    missing_required: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
@@ -67,12 +71,15 @@ class DecisionPackage:
             "symbol": self.symbol,
             "recommendation": self.recommendation,
             "decision": self.decision,
+            "incomplete_research": self.incomplete_research,
+            "missing_required": list(self.missing_required),
             "scores": self.scores.to_dict(),
             "equity_opportunity": self.equity_opportunity.to_dict(),
             "option_candidate": (
                 self.option_candidate.to_dict() if self.option_candidate is not None else None
             ),
             "catalyst": self.catalyst.to_dict(),
+            "fundamentals": self.fundamentals.to_dict(),
             "adversarial": self.adversarial.to_dict(),
             "risk": dict(self.risk),
             "notes": list(self.notes),

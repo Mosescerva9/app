@@ -11,8 +11,10 @@ This repo’s earlier local numbering used Phase 5 for options (audit Phase 6).
 - Auditable **Decision Package** JSON from `python -m trading_system decide`
   - Existing technical / regime / options scores
   - **Catalyst** section (earnings proximity + simple filing flags)
+  - **Fundamentals** section (official forecast-EPS only; mock = unavailable)
   - **Adversarial** section: `why_trade_fails`, `instant_reject_conditions`,
     `better_strike_dte_or_stand_aside`, `confidence_penalty`
+  - `incomplete_research` / `missing_required` — no `candidate` until required dims exist
 - `CatalystProvider` interface
   - **Mock** (default / CI): never invents news or earnings dates; returns
     `available=false` + unavailable notes unless a test fixture is injected
@@ -33,13 +35,31 @@ This repo’s earlier local numbering used Phase 5 for options (audit Phase 6).
 - Long premium only; `$1,500` / `$150` risk budget unchanged
 - `LIVE_EXECUTION_UNLOCKED` remains `False`
 
-### Still deferred
-- Full fundamentals scoring (income/balance/cash-flow, analyst targets)
-- Backtester / walk-forward (audit Phase 7)
+### RESEARCH_COMPLETE vs still-deferred (honest)
+
+A **package** may set `incomplete_research=false` only when **all** of these are present:
+
+| Required dimension | This slice |
+|---|---|
+| Regime + equity scores | Phase 3–4 |
+| Long-premium option (or explicit none → incomplete) | Phase 5 |
+| Catalyst (official earnings date or ETF `not_applicable`) | Phase 8 |
+| Fundamentals (official forecast-EPS or ETF `not_applicable`) | Phase 8 minimal |
+| Adversarial critique (no instant reject / stand-aside) | Phase 8 rules |
+
+`decide` **will not emit `recommendation=candidate`** (a trade recommendation / GO) when any required dimension is missing or unavailable. That is `stand_aside` + `incomplete_research=true`.
+
+**System-level RESEARCH_COMPLETE is not claimed.** Still deferred before any real GO workflow:
+
+- Full fundamentals (statements, industry comps, analyst targets beyond last EPS)
+- Backtester / walk-forward / OOS (audit Phase 7)
 - Paper journal + paper ledger (audit Phase 9)
 - Dashboard / Grok daily brief (audit Phase 10)
 - Sandbox / live execution (audit Phases 11–12)
 - Live LLM critique (hook exists; no API key required)
+
+### Still deferred
+See table above. Execution remains locked.
 
 ### Try
 ```bash

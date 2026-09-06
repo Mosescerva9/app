@@ -18,8 +18,9 @@ Read-only market data, regime, opportunity scan, long-premium options research, 
 | Opportunity scan with reject diagnosis | ✅ |
 | Options engine (long calls / long puts only) | ✅ ~$150 premium×100 cap |
 | Catalyst / news-events (earnings proximity, filing flags) | ✅ official Webull fundamentals or mock-unavailable — no invented news |
+| Fundamentals (minimal forecast-EPS) | ✅ official `get_forecast_eps` or mock-unavailable — no invented statements |
 | Adversarial critique (rule-based + LLM hook) | ✅ deterministic; no live LLM in CI |
-| Decision Packages | ✅ `python -m trading_system decide` |
+| Decision Packages | ✅ `decide` refuses `candidate`/GO when research is incomplete |
 | CLI: `status`, `bars`, `snapshots`, `regime`, `scan`, `options`, `decide`, `account` | ✅ |
 | Order placement | ❌ intentionally disabled |
 

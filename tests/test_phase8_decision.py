@@ -19,6 +19,9 @@ from trading_system.events.parse import parse_earnings_rows, parse_filing_rows
 from trading_system.events.scoring import score_catalyst
 from trading_system.events.types import CatalystFixture
 from trading_system.events.webull import WebullCatalystProvider
+from trading_system.fundamentals import MockFundamentalsProvider
+from trading_system.fundamentals.parse import parse_forecast_eps_rows
+from trading_system.fundamentals.types import FundamentalsFixture
 from trading_system.modes import LIVE_EXECUTION_UNLOCKED, PHASE
 from trading_system.options.scoring import score_contract
 from trading_system.options.types import OptionCandidate, OptionContract, OptionsAnalysisReport, occ_symbol
@@ -129,7 +132,7 @@ def _report(*candidates: OptionCandidate) -> OptionsAnalysisReport:
     )
 
 
-def _engine(catalyst=None) -> DecisionPackageEngine:
+def _engine(catalyst=None, fundamentals=None) -> DecisionPackageEngine:
     from trading_system.options.engine import OptionsAnalysisEngine
 
     md = MockMarketDataProvider()
@@ -137,6 +140,7 @@ def _engine(catalyst=None) -> DecisionPackageEngine:
     return DecisionPackageEngine(
         options_engine=options,
         catalyst_provider=catalyst or MockCatalystProvider(),
+        fundamentals_provider=fundamentals or MockFundamentalsProvider(),
         critic=CompositeAdversarialCritic(RuleBasedAdversarialCritic(), NullLLMCritic()),
         risk=_limits(),
         max_packages=5,
@@ -172,9 +176,12 @@ REQUIRED_PACKAGE_KEYS = {
     "equity_opportunity",
     "option_candidate",
     "catalyst",
+    "fundamentals",
     "adversarial",
     "risk",
     "notes",
+    "incomplete_research",
+    "missing_required",
     "live_execution_unlocked",
 }
 
@@ -284,7 +291,7 @@ def test_earnings_within_seven_days_stand_aside_not_crash():
     assert pkg.adversarial.reject is False
 
 
-def test_known_distant_earnings_can_remain_candidate():
+def test_known_distant_earnings_still_incomplete_without_fundamentals():
     earn = AS_OF.date() + timedelta(days=30)
     catalyst = MockCatalystProvider(
         {"AAPL": CatalystFixture(earnings_date=earn, earnings_status="upcoming")}
@@ -292,8 +299,44 @@ def test_known_distant_earnings_can_remain_candidate():
     engine = _engine(catalyst)
     pkg = engine.build(options_report=_report(_candidate()), as_of=AS_OF).packages[0]
     assert pkg.catalyst.score is not None and pkg.catalyst.score >= 70
-    assert pkg.recommendation in {"candidate", "watch"}
+    assert pkg.incomplete_research is True
+    assert "fundamentals" in pkg.missing_required
+    assert pkg.recommendation == "stand_aside"
     assert pkg.adversarial.reject is False
+
+
+def test_cli_refuses_candidate_when_required_dimensions_missing():
+    engine = _engine()
+    pkg = engine.build(options_report=_report(_candidate()), as_of=AS_OF).packages[0]
+    assert pkg.incomplete_research is True
+    assert "catalyst" in pkg.missing_required
+    assert "fundamentals" in pkg.missing_required
+    assert pkg.recommendation != "candidate"
+    assert pkg.recommendation == "stand_aside"
+
+
+def test_candidate_allowed_only_when_research_dimensions_present():
+    earn = AS_OF.date() + timedelta(days=30)
+    engine = _engine(
+        MockCatalystProvider(
+            {"AAPL": CatalystFixture(earnings_date=earn, earnings_status="upcoming")}
+        ),
+        MockFundamentalsProvider(
+            {
+                "AAPL": FundamentalsFixture(
+                    latest_actual_eps=1.2,
+                    latest_estimate_eps=1.1,
+                    beat_miss="beat",
+                )
+            }
+        ),
+    )
+    pkg = engine.build(options_report=_report(_candidate()), as_of=AS_OF).packages[0]
+    assert pkg.incomplete_research is False
+    assert pkg.missing_required == ()
+    assert pkg.fundamentals.available is True
+    assert pkg.recommendation in {"candidate", "watch"}
+    assert pkg.recommendation not in {"stand_aside", "reject"}
 
 
 def test_rule_critic_emergency_stop_reject():
@@ -414,6 +457,23 @@ def test_webull_provider_uses_official_calendar_payload():
     assert any("earnings-calendar" in n for n in snap.notes)
 
 
+def test_parse_official_forecast_eps_fields():
+    rows = parse_forecast_eps_rows(
+        [
+            {
+                "fiscalYear": 2026,
+                "fiscalPeriod": 2,
+                "actual": "1.10",
+                "est": "1.00",
+                "reported": True,
+            }
+        ]
+    )
+    assert rows[0].actual == 1.10
+    assert rows[0].estimate == 1.00
+    assert rows[0].reported is True
+
+
 def test_catalyst_score_none_when_unavailable():
     assert score_catalyst(
         available=False,
@@ -448,6 +508,8 @@ def test_runtime_decide_and_cli_emit_packages(capsys):
     for pkg in payload["packages"]:
         assert REQUIRED_PACKAGE_KEYS <= set(pkg)
         assert REQUIRED_ADVERSARIAL_KEYS <= set(pkg["adversarial"])
+        if pkg["incomplete_research"]:
+            assert pkg["recommendation"] != "candidate"
 
     rc = main(["decide", "--symbols", "AAPL", "--min-equity-score", "40", "--min-option-score", "40"])
     assert rc == 0

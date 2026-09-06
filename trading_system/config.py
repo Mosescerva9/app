@@ -40,6 +40,7 @@ class Settings:
     emergency_stop: bool
     log_level: str
     catalyst_provider: str = "auto"
+    fundamentals_provider: str = "auto"
 
     @property
     def webull_configured(self) -> bool:
@@ -76,6 +77,8 @@ class Settings:
             emergency_stop=_bool(os.getenv("EMERGENCY_STOP"), default=False),
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
             catalyst_provider=os.getenv("CATALYST_PROVIDER", "auto").strip().lower() or "auto",
+            fundamentals_provider=os.getenv("FUNDAMENTALS_PROVIDER", "auto").strip().lower()
+            or "auto",
         )
 
 

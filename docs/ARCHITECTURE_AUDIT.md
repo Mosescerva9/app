@@ -178,7 +178,7 @@ USER APPROVAL  →  Webull order (sandbox/paper first)
 | **5** | Quantitative scoring (weighted, documented) | Scores reproducible from same inputs |
 | **6** | Options engine (30–60 DTE, liquidity filters) | Contract selection report with Greeks/IV/spread checks |
 | **7** | Backtester (costs, slippage, OOS, walk-forward) | At least 1–2 setups validated without look-ahead — **deferred** |
-| **8** | Adversarial AI + decision packages | Every proposal has counter-thesis + reject rules — **partial: rule-based packages + official earnings/filings adapter; LLM overlay is a no-op hook** |
+| **8** | Adversarial AI + decision packages | Every proposal has counter-thesis + reject rules — **partial: rule-based packages + official earnings/filings + minimal forecast-EPS; `decide` refuses `candidate` when required dimensions are missing; LLM overlay is a no-op hook** |
 | **9** | Paper trading mode + journal | Full loop without broker risk — **deferred** |
 | **10** | Dashboard + alerts + daily/weekly reports | You can operate visually + via Grok chat |
 | **11** | Webull execution adapter (sandbox) | Preview/place/cancel in sandbox only |
