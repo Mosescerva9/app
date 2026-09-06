@@ -1,6 +1,6 @@
 # Architecture Audit — AI Trading Research & Execution System
 
-**Status:** Phase 1–6 research path + **Phase 8 Decision Packages** + **Phase 7 minimal backtester** (cost/slippage, OOS/walk-forward, synthetic long-premium) + **Phase 9 paper journal** (simulated ledger, no broker orders). Phases 10–12 dashboard/live remain deferred. No live order placement. `RESEARCH_COMPLETE` is false.  
+**Status:** Phase 1–6 research path + **Phase 8 Decision Packages** + **Phase 7 minimal backtester** (cost/slippage, OOS/walk-forward, synthetic long-premium) + **Phase 9 paper journal** (simulated ledger, no broker orders) + **Phase 10 text report CLI**. Phases 11–12 sandbox/live remain deferred and are **not** required for `RESEARCH_COMPLETE`. No live order placement. `RESEARCH_COMPLETE` is a research-desk flag (`true`); `LIVE_EXECUTION_UNLOCKED` stays `false`.  
 **Date:** 2026-09-06  
 **Capital assumption:** ~$1,000 (Phase 1). Later research phases use **$1,500 / 10% → $150 per trade**.  
 **Default mode:** `RESEARCH` → then `PAPER` → only later `LIVE_APPROVAL`
@@ -180,9 +180,9 @@ USER APPROVAL  →  Webull order (sandbox/paper first)
 | **7** | Backtester (costs, slippage, OOS, walk-forward) | At least 1–2 setups validated without look-ahead — **partial: one regime-filtered long-premium setup with synthetic option mark; not historical OPRA** |
 | **8** | Adversarial AI + decision packages | Every proposal has counter-thesis + reject rules — **partial: rule-based packages + official earnings/filings + minimal forecast-EPS; `decide` refuses `candidate` when required dimensions are missing; LLM overlay is a no-op hook** |
 | **9** | Paper trading mode + journal | Full loop without broker risk — **done: simulated ledger + paper-only CLI; not a Webull paper account** |
-| **10** | Dashboard + alerts + daily/weekly reports | You can operate visually + via Grok chat |
-| **11** | Webull execution adapter (sandbox) | Preview/place/cancel in sandbox only |
-| **12** | `LIVE_APPROVAL` behind explicit command + kill switch | **Requires your written confirmation** |
+| **10** | Dashboard + alerts + daily/weekly reports | You can operate visually + via Grok chat — **partial: text CLI `report` / `report --weekly`; visual dashboard still optional** |
+| **11** | Webull execution adapter (sandbox) | Preview/place/cancel in sandbox only — **deferred; not required for RESEARCH_COMPLETE** |
+| **12** | `LIVE_APPROVAL` behind explicit command + kill switch | **Requires your written confirmation** — **deferred; not required for RESEARCH_COMPLETE** |
 
 **Rule:** Do not skip to live execution. Do not proceed past a critical failure without resolving it.
 
@@ -313,7 +313,10 @@ Phase 8 Decision Packages remain the operator surface (`decide`). Phase 7 adds
 `python -m trading_system backtest` (no look-ahead, costs/slippage, OOS or
 walk-forward) and official statement/ratio fundamentals when the SDK returns
 them. Phase 9 adds `paper-open` / `paper-close` / `journal` as a simulated
-ledger (no broker orders). **`RESEARCH_COMPLETE` is false** (no dashboard/Grok
-brief; backtest is not historical OPRA; execution locked). CLI stamps
-`trade_recommendation=false` / `go_signals_allowed=false`.
-Live execution remains locked until section **L** item 5 and a later explicit unlock.
+ledger (no broker orders). Phase 10 adds `python -m trading_system report`
+(daily/weekly text for Grok). **`RESEARCH_COMPLETE` is true** as a research-desk
+flag (items 1–7 + report CLI). Sandbox execution and LIVE unlock are
+**post-research** and stay locked. `trade_recommendation` / `go_signals_allowed`
+may be true only for paper/research candidates; `go_signal` (broker GO) stays
+false. Live execution remains locked until section **L** item 5 and a later
+explicit unlock.

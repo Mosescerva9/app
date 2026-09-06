@@ -86,7 +86,7 @@ def test_runtime_status_and_fetch():
         risk=load_risk_limits(settings),
     )
     status = runtime.status()
-    assert status["phase"] == PHASE == 9
+    assert status["phase"] == PHASE == 10
     assert status["mode"] == "RESEARCH"
     assert status["live_execution_unlocked"] is False
     assert status["risk"]["max_risk_per_trade_usd"] == 40.0

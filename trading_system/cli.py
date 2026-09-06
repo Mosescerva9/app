@@ -25,7 +25,7 @@ def _print(data: object) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="trading-system",
-        description="AI trading research system — Phase 9 paper journal (no order placement)",
+        description="AI trading research system — Phase 10 text report (no order placement)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -141,6 +141,27 @@ def build_parser() -> argparse.ArgumentParser:
     paper_note.add_argument("text")
     paper_note.add_argument("--symbol", default="")
 
+    report = sub.add_parser(
+        "report",
+        help="Phase 10 daily/weekly text report for Grok oversight (no UI, no broker GO)",
+    )
+    report.add_argument(
+        "--weekly",
+        action="store_true",
+        help="Use a 7-day journal/backtest window instead of the daily snapshot",
+    )
+    report.add_argument("--benchmark", default="SPY")
+    report.add_argument("--lookback", type=int, default=90)
+    report.add_argument("--min-equity-score", type=float, default=55.0)
+    report.add_argument("--min-option-score", type=float, default=55.0)
+    report.add_argument("--max-results", type=int, default=10)
+    report.add_argument(
+        "--symbols",
+        nargs="+",
+        default=None,
+        help="Optional decide universe (default: liquid large-caps/ETFs)",
+    )
+
     return parser
 
 
@@ -238,6 +259,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "paper-note":
         _print(runtime.paper_note(args.text, symbol=args.symbol))
+        return 0
+    if args.command == "report":
+        payload = runtime.research_report(
+            weekly=args.weekly,
+            benchmark=args.benchmark,
+            lookback=args.lookback,
+            min_equity_score=args.min_equity_score,
+            min_option_score=args.min_option_score,
+            max_results=args.max_results,
+            symbols=args.symbols,
+        )
+        print(payload.get("text") or "")
         return 0
 
     parser.error(f"Unknown command {args.command}")

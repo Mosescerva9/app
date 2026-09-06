@@ -49,21 +49,18 @@ A **package** may set `incomplete_research=false` only when **all** of these are
 
 `decide` **will not emit `recommendation=candidate`** when any required dimension is missing or unavailable (`stand_aside` + `incomplete_research=true`).
 
-Every CLI payload (`status`, `scan`, `options`, `decide`) stamps:
-
-- `research_complete=false`
-- `trade_recommendation=false`
-- `go_signals_allowed=false`
-- `go_signal=false` on each package
-
 `scan` / `options` are TA/options research only — they are **not** GO signals even when they list a `CANDIDATE` setup.
 
-**System-level `RESEARCH_COMPLETE` is false** until the deferred items below exist. A package with all required dimensions is still not a live trade recommendation.
+`go_signal` (broker GO) stays `false` on every package. See the current
+[`docs/RESEARCH_COMPLETE.md`](RESEARCH_COMPLETE.md) exit rule: research items 1–7
+plus the Phase 10 text report CLI flip the research-desk flag; sandbox/LIVE stay
+post-research.
+
+Known limits (not RESEARCH_COMPLETE blockers):
 
 - Analyst targets/ratings (`DataClient.instrument`, not fundamentals.*)
 - Historical option-chain backtests (Phase 7 uses a synthetic long-premium mark)
-- Paper journal + paper ledger (audit Phase 9) — **done in the Phase 9 slice** (simulated; no broker)
-- Dashboard / Grok daily brief (audit Phase 10)
+- Visual dashboard (text report shipped in Phase 10)
 - Sandbox / live execution (audit Phases 11–12)
 - Live LLM critique (hook exists; no API key required)
 

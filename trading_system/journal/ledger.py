@@ -23,8 +23,8 @@ PHASE9_COMPLETE = True
 PHASE9_NOTE = (
     "Phase 9 paper journal is a real RESEARCH practice loop: simulated long-premium "
     "positions, fills, P&L, and $1,500 / $150 risk caps. Commands are paper-only and "
-    "never place broker orders. RESEARCH_COMPLETE stays false until dashboard/Grok "
-    "brief, historical OPRA backtests, and explicit live unlock exist."
+    "never place broker orders. RESEARCH_COMPLETE is a research-desk flag; "
+    "LIVE_EXECUTION_UNLOCKED stays false and no broker GO is emitted."
 )
 
 DEFAULT_LEDGER_PATH = Path("data/paper_journal.json")
@@ -85,6 +85,7 @@ class PaperLedger:
         self._entries: list[JournalEntry] = []
         self._position_seq = 0
         self._fill_seq = 0
+        self._last_backtest: dict[str, Any] | None = None
         self._load()
 
     def _load(self) -> None:
@@ -134,6 +135,9 @@ class PaperLedger:
                 )
             except (TypeError, ValueError):
                 continue
+        stored = raw.get("last_backtest")
+        if isinstance(stored, dict) and stored.get("symbol"):
+            self._last_backtest = dict(stored)
         self._assert_cash_invariant()
 
     def _position_from_dict(self, row: dict[str, Any]) -> PaperPosition | None:
@@ -203,6 +207,7 @@ class PaperLedger:
             "positions": [p.to_dict() for p in self._positions],
             "fills": [f.to_dict() for f in self._fills],
             "entries": [e.to_dict() for e in self._entries],
+            "last_backtest": None if self._last_backtest is None else dict(self._last_backtest),
         }
 
     def _assert_cash_invariant(self) -> None:
@@ -325,6 +330,19 @@ class PaperLedger:
 
     def record_backtest(self, report: BacktestReport) -> int:
         now = datetime.now(timezone.utc)
+        all_metrics = report.metrics.get("all")
+        self._last_backtest = {
+            "available": True,
+            "recorded_at": now.isoformat(),
+            "symbol": report.symbol,
+            "setup": report.setup,
+            "split_mode": report.split_mode,
+            "trade_count": len(report.trades),
+            "net_pnl_usd": None if all_metrics is None else round(all_metrics.net_pnl_usd, 2),
+            "win_rate": None if all_metrics is None else all_metrics.win_rate,
+            "cli": f"python -m trading_system backtest {report.symbol} --split {report.split_mode}",
+            "note": "synthetic long-premium; not historical OPRA",
+        }
         for trade in report.trades:
             self.record(
                 JournalEntry(
@@ -341,6 +359,8 @@ class PaperLedger:
                     ),
                 )
             )
+        if not report.trades:
+            self._persist()
         return len(report.trades)
 
     def open_from_package(
@@ -629,6 +649,7 @@ class PaperLedger:
                 "emergency_stop": self.risk.emergency_stop,
             },
             "notes": [PHASE9_NOTE],
+            "last_backtest": None if self._last_backtest is None else dict(self._last_backtest),
             "broker_order_placed": False,
             "paper_only": True,
         }

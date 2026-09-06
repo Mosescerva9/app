@@ -240,15 +240,17 @@ class SpyBroker(MockBrokerReadClient):
         return super().place_order(*args, **kwargs)
 
 
-def test_phase9_complete_but_research_and_live_stay_locked():
-    assert PHASE == 9
+def test_phase9_complete_research_true_live_stays_locked():
+    assert PHASE == 10
     assert PHASE9_COMPLETE is True
-    assert RESEARCH_COMPLETE is False
+    assert RESEARCH_COMPLETE is True
     assert LIVE_EXECUTION_UNLOCKED is False
     checklist = research_complete_checklist()
     assert checklist["paper_journal_loop"] is True
-    assert checklist["dashboard_grok_brief"] is False
+    assert checklist["daily_weekly_text_report"] is True
+    assert checklist["dashboard_ui"] is False
     assert checklist["historical_opra_backtest"] is False
+    assert checklist["sandbox_execution_adapter"] is False
     assert checklist["live_approval_unlock"] is False
 
 
@@ -386,16 +388,19 @@ def test_runtime_status_wires_journal_and_keeps_locks():
         paper_ledger=PaperLedger(path=None, risk=load_risk_limits(settings)),
     )
     status = runtime.status()
-    assert status["phase"] == 9
+    assert status["phase"] == 10
     assert status["paper_journal"] == "paper_ledger"
     assert status["phase9_complete"] is True
-    assert status["research_complete"] is False
+    assert status["phase10_complete"] is True
+    assert status["research_complete"] is True
     assert status["go_signals_allowed"] is False
     assert status["trade_recommendation"] is False
     assert status["live_execution_unlocked"] is False
     assert status["paper_account"]["cash_usd"] == 1500.0
     assert status["research_complete_checklist"]["paper_journal_loop"] is True
-    assert status["research_complete_checklist"]["dashboard_grok_brief"] is False
+    assert status["research_complete_checklist"]["daily_weekly_text_report"] is True
+    assert status["research_complete_checklist"]["dashboard_ui"] is False
+    assert status["research_complete_checklist"]["sandbox_execution_adapter"] is False
 
 
 def test_runtime_paper_open_stands_aside_when_mock_research_incomplete():

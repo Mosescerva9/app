@@ -1,3 +1,3 @@
-"""AI trading research system — Decision Packages + paper journal (read-only RESEARCH)."""
+"""AI trading research system — Decision Packages + paper journal + text report."""
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"

@@ -204,8 +204,8 @@ REQUIRED_CATALYST_KEYS = {
 }
 
 
-def test_phase_is_nine_and_execution_locked():
-    assert PHASE == 9
+def test_phase_is_ten_and_execution_locked():
+    assert PHASE == 10
     assert LIVE_EXECUTION_UNLOCKED is False
 
 
@@ -234,9 +234,12 @@ def test_decision_package_shape_includes_catalyst_and_adversarial():
     assert pkg["risk"]["max_risk_per_trade_usd"] == 150.0
     assert pkg["live_execution_unlocked"] is False
     assert pkg["go_signal"] is False
-    assert payload["research_complete"] is False
-    assert payload["trade_recommendation"] is False
+    assert payload["research_complete"] is True
     assert payload["go_signal_count"] == 0
+    paper = pkg["recommendation"] == "candidate" and not pkg["incomplete_research"]
+    assert payload["trade_recommendation"] is paper
+    assert payload["go_signals_allowed"] is paper
+    assert payload["broker_go_allowed"] is False
 
 
 def test_unavailable_catalyst_does_not_crash_and_lowers_confidence():
@@ -505,10 +508,11 @@ def test_runtime_decide_and_cli_emit_packages(capsys):
         catalyst_provider=MockCatalystProvider(),
     )
     status = runtime.status()
-    assert status["phase"] == 9
+    assert status["phase"] == 10
     assert status["live_execution_unlocked"] is False
-    assert status["research_complete"] is False
+    assert status["research_complete"] is True
     assert status["trade_recommendation"] is False
+    assert status["phase10_complete"] is True
     assert status["catalyst_provider"] == "mock"
     payload = runtime.decide(symbols=["AAPL", "MSFT"], min_equity_score=40.0, min_option_score=40.0)
     assert "packages" in payload
@@ -552,7 +556,7 @@ def test_scan_and_options_cli_are_not_trade_recommendations():
     options = runtime.analyze_options(symbols=["AAPL"], min_equity_score=40.0, min_option_score=40.0)
     for payload, command in ((scan, "scan"), (options, "options")):
         assert payload["trade_recommendation"] is False
-        assert payload["research_complete"] is False
+        assert payload["research_complete"] is True
         assert payload["go_signals_allowed"] is False
         assert payload["live_execution_unlocked"] is False
         assert payload["research_command"] == command

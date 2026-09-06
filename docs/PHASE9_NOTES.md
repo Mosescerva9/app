@@ -4,7 +4,7 @@ Architecture audit Phase 9: *Paper trading mode + journal*.
 Branch: `cursor/trading-system-phase9-paper-journal-1d98`  
 Base: `cursor/trading-system-phase7-backtester-56e4` (PR #9)
 
-`PHASE` is now **9**. Execution stays locked. `RESEARCH_COMPLETE` stays **false**.
+`PHASE` was **9** in this slice (now **10** with the text report). Execution stays locked.
 
 ### Delivered
 - Structured paper ledger (`data/paper_journal.json`, gitignored)
@@ -37,11 +37,14 @@ A paper open is refused when any of these hold:
 - Not a Webull sandbox or official paper account
 - No broker fills, no order preview, no `place_order`
 - Historical OPRA option chains (Phase 7 still uses a synthetic mark)
-- Dashboard + Grok daily brief (audit Phase 10)
-- Sandbox / live execution (audit Phases 11–12)
+- Dashboard UI (audit Phase 10 visual layer; text report shipped in Phase 10)
+- Sandbox / live execution (audit Phases 11–12; **not** required for RESEARCH_COMPLETE)
 
 ### RESEARCH_COMPLETE
-**False.** Item 7 on [`docs/RESEARCH_COMPLETE.md`](RESEARCH_COMPLETE.md) is now done. Items 8–10 (dashboard/Grok, sandbox adapter, live unlock) remain deferred. Phase 7 remains a **minimal** synthetic backtest, not historical OPRA.
+Item 7 on [`docs/RESEARCH_COMPLETE.md`](RESEARCH_COMPLETE.md) is done. The Phase 10
+text report CLI completes the research-desk exit rule. Sandbox adapter and live
+unlock remain **post-research**. Phase 7 remains a **minimal** synthetic backtest,
+not historical OPRA — that is a known limit, not a research-complete blocker.
 
 ### Try
 ```bash

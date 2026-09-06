@@ -21,6 +21,7 @@ from trading_system.events import CatalystProvider, build_catalyst_provider
 from trading_system.fundamentals import FundamentalsProvider, build_fundamentals_provider
 from trading_system.journal import PHASE9_COMPLETE, PaperLedger
 from trading_system.modes import PHASE, assert_mode_allowed
+from trading_system.report import PHASE10_COMPLETE, ResearchReportBuilder
 from trading_system.research_lock import stamp_research_lock
 from trading_system.options import OptionsAnalysisEngine, build_option_chain_provider
 from trading_system.regime import MarketRegimeEngine
@@ -100,6 +101,7 @@ class ResearchRuntime:
             "adversarial_critic": getattr(self.critic, "name", type(self.critic).__name__),
             "paper_journal": self.paper_ledger.name,
             "phase9_complete": PHASE9_COMPLETE,
+            "phase10_complete": PHASE10_COMPLETE,
             "paper_account": self.paper_ledger.account_snapshot().to_dict(),
             "backtester": "regime_filtered_long_premium",
             "webull_configured": self.settings.webull_configured,
@@ -390,6 +392,31 @@ class ResearchRuntime:
     def paper_note(self, text: str, *, symbol: str = "") -> dict:
         result = self.paper_ledger.add_note(text, symbol=symbol)
         return stamp_research_lock(result.to_dict(), command="paper-note")
+
+    def research_report(
+        self,
+        *,
+        weekly: bool = False,
+        benchmark: str = "SPY",
+        lookback: int = 90,
+        min_equity_score: float = 55.0,
+        min_option_score: float = 55.0,
+        max_results: int = 10,
+        symbols: list[str] | None = None,
+    ) -> dict:
+        """Daily/weekly text report for Grok oversight. Never places a broker order."""
+        report = ResearchReportBuilder(self).build(
+            weekly=weekly,
+            benchmark=benchmark,
+            lookback=lookback,
+            min_equity_score=min_equity_score,
+            min_option_score=min_option_score,
+            max_results=max_results,
+            symbols=symbols,
+        )
+        payload = report.to_dict()
+        payload["phase10_complete"] = PHASE10_COMPLETE
+        return stamp_research_lock(payload, command="report")
 
     def _decision_report(
         self,
